@@ -12,12 +12,28 @@ describe("project explorer", () => {
   });
   it("selects an actual scene identity", async () => {
     const select = vi.fn();
-    render(<Explorer scene={library.scene} selectedId={null} query="" onSelect={select} onDrill={vi.fn()}/>);
+    render(
+      <Explorer
+        scene={library.scene}
+        selectedId={null}
+        query=""
+        onSelect={select}
+        onDrill={vi.fn()}
+      />,
+    );
     await userEvent.click(screen.getByRole("button", { name: "Catalog" }));
     expect(select).toHaveBeenCalledWith("d0-catalog");
   });
   it("shows an explicit empty search state", () => {
-    render(<Explorer scene={library.scene} selectedId={null} query="unknown" onSelect={vi.fn()} onDrill={vi.fn()}/>);
+    render(
+      <Explorer
+        scene={library.scene}
+        selectedId={null}
+        query="unknown"
+        onSelect={vi.fn()}
+        onDrill={vi.fn()}
+      />,
+    );
     expect(screen.getByText("No matching classes or methods.")).toBeVisible();
   });
 });

@@ -1,0 +1,4 @@
+{:version 1
+ :namespace "example.catalog"
+ :source "src/catalog.py"
+ :forms [{:id "defn/find" :killed 8 :survived 2 :uncovered 1 :sites 11}]}

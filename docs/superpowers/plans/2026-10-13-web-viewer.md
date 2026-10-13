@@ -207,7 +207,7 @@ the Clojure directories listed above.
 **Produces:** `root!`, `file!`, `open-document`, `snapshot`,
 `focus-document`, `reload-document`, and `wire`.
 
-- [ ] **Step 1: Add failing specs for real documents, identities, and nulls.**
+- [x] **Step 1: Add failing specs for real documents, identities, and nulls.**
 
 ```clojure
 (it "keeps namespaced identities lossless on the wire"
@@ -233,13 +233,13 @@ Add real-path tests for `../`, an outside-root symlink, and an oversized file.
 Test a diagram selected under another project does not load this repository's
 `.metrics`.
 
-- [ ] **Step 2: Run the red test cycle.**
+- [x] **Step 2: Run the red test cycle.**
 
 Run from the repository:
 `clojure -M:spec spec/uml_viewer/web/paths_spec.clj spec/uml_viewer/web/model_spec.clj`.
 Expected initially: unresolved new namespaces/functions.
 
-- [ ] **Step 3: Implement confinement and DTO projection.**
+- [x] **Step 3: Implement confinement and DTO projection.**
 
 The key identity and path algorithms are:
 
@@ -295,13 +295,13 @@ Validate focus by walking reachable hierarchy nodes, converting only
 accepted namespace segments into keywords. Reload keeps reachable focus,
 otherwise resets to `[]`; it must not hide malformed input.
 
-- [ ] **Step 4: Run focused and dependent regression specs.**
+- [x] **Step 4: Run focused and dependent regression specs.**
 
 Run:
 `clojure -M:spec spec/uml_viewer/web spec/uml_viewer/application/document_spec.clj spec/uml_viewer/application/overlay_spec.clj spec/uml_viewer/engine`.
 Expected: no failures and no pending new cases.
 
-- [ ] **Step 5: Commit the model deliverable with required trailers.**
+- [x] **Step 5: Commit the model deliverable with required trailers.**
 
 Stage only the new model/path namespaces and their specs.
 Commit message: `feat: expose confined web viewer document snapshots`.
@@ -315,7 +315,7 @@ implementations, and `detail/member-ident`.
 
 **Produces:** `source/read-member [state class-id member-name]`.
 
-- [ ] **Step 1: Write source tests before implementation.**
+- [x] **Step 1: Write source tests before implementation.**
 
 Create a temporary root containing this file:
 
@@ -334,11 +334,11 @@ Add Clojure lookup with namespace `example.checkout` and
 `src/example/checkout.clj`, when `:file` is absent.
 Add a source file larger than 1 MiB and assert 413.
 
-- [ ] **Step 2: Run `clojure -M:spec spec/uml_viewer/web/source_spec.clj`.**
+- [x] **Step 2: Run `clojure -M:spec spec/uml_viewer/web/source_spec.clj`.**
 
 Expected initially: new namespace/function unavailable.
 
-- [ ] **Step 3: Implement source resolution before text access.**
+- [x] **Step 3: Implement source resolution before text access.**
 
 Find the requested wire ID in the current scene and retain its original
 class identity for `detail/member-ident`. Register existing Clojure, Python,
@@ -362,12 +362,12 @@ must be found by the extractor; class-only inspection needs no extraction.
 Return the project-relative file path, full body, selected line, language,
 and current revision.
 
-- [ ] **Step 4: Run all new web specs and existing language source specs.**
+- [x] **Step 4: Run all new web specs and existing language source specs.**
 
 Run:
 `clojure -M:spec spec/uml_viewer/web spec/uml_viewer/clojure_language spec/uml_viewer/python_language spec/uml_viewer/rust_language spec/uml_viewer/typescript_language`.
 
-- [ ] **Step 5: Commit with message `feat: add project-confined source inspection`.**
+- [x] **Step 5: Commit with message `feat: add project-confined source inspection`.**
 
 Include required trailers.
 
@@ -382,7 +382,7 @@ modify `deps.edn`.
 `server/stop! [server-handle]`, and CLI `parse-args` / `-main`.
 Options contain `:root`, `:diagram`, `:port`, and `:assets`.
 
-- [ ] **Step 1: Add the dependency/alias needed by this deliverable.**
+- [x] **Step 1: Add the dependency/alias needed by this deliverable.**
 
 Keep the existing aliases unchanged and add:
 
@@ -394,7 +394,7 @@ Keep the existing aliases unchanged and add:
 Test using `-M:web:spec`, not `-M:spec:web`; the final alias must supply
 Speclj's main options.
 
-- [ ] **Step 2: Add failing real-HTTP and CLI specs.**
+- [x] **Step 2: Add failing real-HTTP and CLI specs.**
 
 Start with port 0 and a temporary assets directory containing:
 
@@ -414,12 +414,12 @@ Source requests with a prior revision must return 409.
 Test unknown flags, nonnumeric/out-of-range ports, help, and missing flag
 values. Stop each server in `finally` so tests do not leave processes.
 
-- [ ] **Step 3: Run the red cycle.**
+- [x] **Step 3: Run the red cycle.**
 
 Run:
 `clojure -M:web:spec spec/uml_viewer/web/server_spec.clj spec/uml_viewer/main/web_viewer_spec.clj`.
 
-- [ ] **Step 4: Implement bounded transport and lifecycle.**
+- [x] **Step 4: Implement bounded transport and lifecycle.**
 
 Bind `HttpServer` to `new InetSocketAddress("127.0.0.1", port)`.
 Generate 32 random bytes with `SecureRandom`, encode Base64 URL-safe without
@@ -450,13 +450,13 @@ port `0`. Missing build assets produce an actionable build instruction.
 Print the origin, keep the process attached, and register a shutdown hook
 that stops the server/executor. Do not open a GUI or start an agent.
 
-- [ ] **Step 5: Run new HTTP/model/source specs together.**
+- [x] **Step 5: Run new HTTP/model/source specs together.**
 
 Run:
 `clojure -M:web:spec spec/uml_viewer/web spec/uml_viewer/main/web_viewer_spec.clj`.
 Expected: every new case passes; normal API operation does not load Quil.
 
-- [ ] **Step 6: Commit `feat: serve the local web viewer API`.**
+- [x] **Step 6: Commit `feat: serve the local web viewer API`.**
 
 Include required trailers.
 
@@ -473,7 +473,7 @@ Modify `.gitignore`.
 source/open/reload behavior. The central pane initially shows a real class
 list; Task 5 replaces only that rendering surface with SVG.
 
-- [ ] **Step 1: Add a manifest and configuration for this deliverable.**
+- [x] **Step 1: Add a manifest and configuration for this deliverable.**
 
 Use these scripts:
 
@@ -509,7 +509,7 @@ Ignore `web/node_modules/`, `web/dist/`, `web/test-results/`, and
 `index.html` must contain the token meta marker and the `root` element.
 Mount `App` with `createRoot`; do not fetch in render or add remote fonts.
 
-- [ ] **Step 2: Add failing pure and component tests.**
+- [x] **Step 2: Add failing pure and component tests.**
 
 ```ts
 it("does not manufacture metrics from missing data", () => {
@@ -535,12 +535,12 @@ no-results search, relationships, null badges, known zero counts, source
 preservation of last good snapshot on failure, and clearing selections
 removed by reload. Assert the status bar uses actual scene counts.
 
-- [ ] **Step 3: Run the red cycle.**
+- [x] **Step 3: Run the red cycle.**
 
 Run from `web/`: `npm test`.
 Expected initially: missing new component/function implementations.
 
-- [ ] **Step 4: Implement the API client, components, and interaction state.**
+- [x] **Step 4: Implement the API client, components, and interaction state.**
 
 Create the exact shared types. `api.ts` reads the token meta element once,
 fails visibly if missing, and sends authenticated same-origin requests:
@@ -615,12 +615,12 @@ Implement the approved white/pale-canvas/blue-accent design with
 system-font fallbacks, separators, compact controls, visible keyboard
 focus, and a responsive layout. Keep all shown controls functional.
 
-- [ ] **Step 5: Run `npm test && npm run build` from `web/`.**
+- [x] **Step 5: Run `npm test && npm run build` from `web/`.**
 
 Expected: passing component tests and a typechecked production bundle.
 Start the real server and confirm `/` serves this built app.
 
-- [ ] **Step 6: Commit `feat: add the web explorer and source inspector`.**
+- [x] **Step 6: Commit `feat: add the web explorer and source inspector`.**
 
 Include required trailers.
 
@@ -633,7 +633,7 @@ Include required trailers.
 
 **Produces:** `Diagram` and pure `fitViewport` / `zoomAt` functions.
 
-- [ ] **Step 1: Add geometry and interaction tests.**
+- [x] **Step 1: Add geometry and interaction tests.**
 
 ```ts
 it("keeps the point under the pointer stable while zooming", () => {
@@ -656,11 +656,11 @@ Test min/max zoom clamps, fit including negative scene extents, zero-sized
 viewport guards, click versus drag, keyboard selection, explicit violation
 styling, and missing-score neutral styling.
 
-- [ ] **Step 2: Run `npm test -- viewport.test.ts Diagram.test.tsx`.**
+- [x] **Step 2: Run `npm test -- viewport.test.ts Diagram.test.tsx`.**
 
 Expected initially: missing new canvas functions/components.
 
-- [ ] **Step 3: Implement pure viewport math and SVG rendering.**
+- [x] **Step 3: Implement pure viewport math and SVG rendering.**
 
 ```ts
 export interface Viewport { x: number; y: number; scale: number }
@@ -702,13 +702,13 @@ Wheel zoom anchors at local pointer coordinates. Fit and plus/minus
 buttons are keyboard-accessible, and class nodes have labels/focus and
 Enter selection. An explicit open/drill button or double click drills.
 
-- [ ] **Step 4: Run all frontend tests and the production build.**
+- [x] **Step 4: Run all frontend tests and the production build.**
 
 Run: `npm test && npm run build`.
 Verify long names, multiple diagram sections, negative edge extents,
 hierarchical ports, and selection with the actual checked-in documents.
 
-- [ ] **Step 5: Commit `feat: render interactive UML scenes in SVG`.**
+- [x] **Step 5: Commit `feat: render interactive UML scenes in SVG`.**
 
 Include required trailers.
 
@@ -722,7 +722,7 @@ verification finds defects.
 
 **Produces:** Repeatable browser checks and documented working launch.
 
-- [ ] **Step 1: Add a real-server Playwright suite.**
+- [x] **Step 1: Add a real-server Playwright suite.**
 
 Use the production build, not a Vite mock server. Configure Playwright to
 start from `web/`:
@@ -757,7 +757,7 @@ metric mode, zoom/pan/fit, reload changed fixture metrics, and encounter
 missing/malformed EDN. Assert there are no unexpected console errors.
 Use separate temporary copies for tests that change files.
 
-- [ ] **Step 2: Run production browser tests and fix actual failures.**
+- [x] **Step 2: Run production browser tests and fix actual failures.**
 
 Run from `web/`: `npm run test:e2e`.
 Then run the complete new backend suite plus existing directly dependent
@@ -773,7 +773,7 @@ clojure -M:web:spec spec/uml_viewer/web \
 
 Run frontend unit/type/build checks once after the last code changes.
 
-- [ ] **Step 3: Verify the approved visual contract in a real browser.**
+- [x] **Step 3: Verify the approved visual contract in a real browser.**
 
 Capture a 1536x1024 desktop screenshot. Compare three-pane proportions,
 toolbar, selected-class emphasis, light surfaces, metric/source inspector,
@@ -781,7 +781,7 @@ and diagram legibility against the approved image. Also inspect a narrow
 viewport for usable pane switching/stacking and keyboard navigation.
 Save screenshots in the session artifacts, not the repository.
 
-- [ ] **Step 4: Document actual commands and limitations.**
+- [x] **Step 4: Document actual commands and limitations.**
 
 Add to README:
 
@@ -800,7 +800,7 @@ explicit project/diagram dialog, existing IR generation prerequisite,
 supported source identities, N/A metrics, and absence of agent/analysis
 execution in this milestone. Existing Quil commands remain documented.
 
-- [ ] **Step 5: Commit `test: verify and document the local web viewer`.**
+- [x] **Step 5: Commit `test: verify and document the local web viewer`.**
 
 Include required trailers. Check repository status and report any
 incomplete feature plainly; do not claim a functional rebuild from

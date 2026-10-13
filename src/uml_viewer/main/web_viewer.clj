@@ -1,5 +1,9 @@
 (ns uml-viewer.main.web-viewer
   (:require [clojure.string :as str]
+            [uml-viewer.clojure-language.source-clojure]
+            [uml-viewer.python-language.source-python]
+            [uml-viewer.rust-language.source-rust]
+            [uml-viewer.typescript-language.source-typescript]
             [uml-viewer.web.paths :as paths]
             [uml-viewer.web.server :as server]))
 

@@ -10,6 +10,7 @@
    :engine 1
    :application 2
    :adapters 3
+   :web 3
    :main 4})
 
 (defn- source-files []

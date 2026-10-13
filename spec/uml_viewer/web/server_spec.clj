@@ -19,6 +19,7 @@
   (it "serves actual snapshots and rejects unauthenticated or foreign-origin access"
     (with-project [root]
       (write! root "d.edn" (pr-str diagram))
+      (write! root "bad.edn" "{")
       (write! root "assets/index.html" "<meta content=\"__VIEWER_TOKEN__\">")
       (let [h (server/start! {:root (str root) :diagram "d.edn" :port 0
                               :assets (str root "/assets")})]
@@ -32,6 +33,10 @@
             (should= 403 (.statusCode (request h "GET" "/api/document" nil nil nil)))
             (should= 403 (.statusCode (request h "GET" "/api/document" token nil "https://other.example")))
             (should= 409 (.statusCode (request h "POST" "/api/reload" token {"revision" "old"} nil)))
+            (should= 405 (.statusCode (request h "GET" "/api/source" token nil nil)))
+            (should= 422 (.statusCode (request h "POST" "/api/open" token {"root" (str root) "diagram" "bad.edn"} nil)))
+            (should= 200 (.statusCode (request h "GET" "/api/document" token nil nil)))
+            (should= 413 (.statusCode (request h "POST" "/api/open" token {"root" (apply str (repeat 70000 "a"))} nil)))
             (should= 404 (.statusCode (request h "GET" "/api/unknown" token nil nil))))
           (finally (server/stop! h))))))
   (it "rejects unexpected authorities"

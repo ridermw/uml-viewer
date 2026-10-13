@@ -2,6 +2,7 @@
   (:require [clojure.edn :as edn]
             [clojure.string :as str]
             [uml-viewer.application.document :as document]
+            [uml-viewer.application.overlay :as overlay]
             [uml-viewer.domain.config :as config]
             [uml-viewer.domain.hierarchy :as hierarchy]
             [uml-viewer.domain.ir :as ir]
@@ -36,8 +37,12 @@
                 (paths/error! 422 "invalid-diagram" (.getMessage e))))]
     (revised {:root root :diagram file :raw raw :focus []})))
 
-(defn scene [state]
-  (document/compile-view (:raw state) (str (:root state)) (:focus state)))
+(defn scene
+  ([state]
+   (document/compile-view (:raw state) (str (:root state)) (:focus state)))
+  ([state metrics]
+   (document/compile-view (:raw state) (str (:root state)) (:focus state)
+                          {:metrics metrics})))
 
 (defn- valid-focus? [state segments]
   (and (vector? segments) (every? string? segments)
@@ -68,6 +73,21 @@
 (defn- metrics [m]
   (merge (zipmap metric-keys (repeat nil)) m))
 
+(defn- measured-hierarchy-class [painted c]
+  (let [id (wire (:id c))
+        members (filter #(let [candidate (wire (:id %))]
+                           (or (= id candidate)
+                               (str/starts-with? candidate (str id "."))))
+                        (:classes painted))
+        measured-crap? (some #(some? (get-in % [:crap :mu])) members)
+        measured-mutation? (some #(some (fn [k] (some? (get % k)))
+                                       [:killed :survived :uncovered :sites])
+                                 (concat members (mapcat :ops members)))]
+    ;; Core hierarchy rollups penalize absent measurements; the browser labels them unknown.
+    (cond-> c
+      (not measured-crap?) (assoc :crap nil)
+      (not measured-mutation?) (assoc :killed nil :survived nil :uncovered nil :sites nil))))
+
 (defn- class-dto [c]
   (let [c (reduce (fn [c key]
                     (if (some? (get c key)) c
@@ -86,13 +106,17 @@
                :mutationBand (when score (config/mutation-band score))))))
 
 (defn snapshot [state]
-  (let [compiled (scene state)]
+  (let [metrics (overlay/load-metrics (str (:root state)))
+        compiled (scene state metrics)
+        painted (when (:hierarchical (:raw state))
+                  (overlay/apply-metrics (:raw state) metrics))]
     (wire {:project {:root (str (:root state)) :diagram (str (:diagram state))
                      :title (:title (:raw state))}
            :revision (:revision state) :loadedAt (:loaded-at state)
            :focus (mapv name (:focus state))
            :hierarchical (boolean (:hierarchical (:raw state)))
-           :scene {:classes (mapv class-dto (:classes compiled))
+           :scene {:classes (mapv #(class-dto (if painted (measured-hierarchy-class painted %) %))
+                                  (:classes compiled))
                    :packages (vec (:packages compiled))
                    :edges (mapv #(assoc % :label (:label %) :violating (boolean (:violating %))
                                        :strokes (vec (:strokes %))

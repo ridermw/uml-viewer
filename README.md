@@ -47,6 +47,66 @@ policy, not the IR. See [Policy](#policy).
 
 Needs Clojure CLI and Java 21+.
 
+### Local browser viewer
+
+The browser interface provides a project explorer, interactive SVG diagram,
+and metrics/source inspector. It loads immediately without Grok and keeps
+project data on this machine. The existing Quil application below is unchanged.
+
+From this repository, using Node 22.22.2+ in the Node 22 release line:
+
+```bash
+npm --prefix web ci
+npm --prefix web run build
+clojure -M:web
+```
+
+Open the loopback URL printed by the command. The server remains attached
+to the terminal; Ctrl+C stops it. It chooses an available port by default.
+
+```bash
+clojure -M:web --root /path/to/project --diagram examples/project.edn
+clojure -M:web --port 4173
+clojure -M:web --help
+```
+
+Run these commands from this checkout. `--root` selects the examined project;
+relative diagram and source paths resolve inside that project. **Open Project**
+can switch to another local project and an existing EDN diagram. Diagram and
+source paths cannot escape the selected directory, including through symlinks.
+
+Select classes from the explorer or diagram, search class/namespace/method
+names, and use the inspector to open real source or inspect related classes.
+Hierarchical documents have component drill-down and breadcrumbs. Drag the
+canvas to pan, scroll to zoom, and use **Fit view** for the overview. Selection
+brings small/offscreen classes into readable focus. `/` focuses search.
+
+**Refresh diagram** rereads the EDN and `.metrics/` snapshots. CRAP risk
+colors use the existing mean-plus-standard-deviation thresholds; mutation
+scores use executed killed/survived counts. Missing values display **N/A**,
+not zero. Namespace-based Clojure source and file-based Python, Rust, and
+TypeScript source use the existing extractors.
+
+This first browser release is read-only: it does not scan a directory into
+a diagram, edit policies/proposals, run coverage/mutation commands, or
+connect an agent. Use the existing IR generator to create the EDN first.
+Source-less examples remain viewable and show an explicit source error.
+
+```bash
+npm --prefix web run format:check
+npm --prefix web test
+npm --prefix web run build
+npm --prefix web run test:e2e
+clojure -M:web:spec
+```
+
+Browser tests use the built frontend and a real loopback server. If Playwright
+reports a missing Chromium runtime, install it with
+`cd web && npx playwright install chromium`. There is no separate frontend
+development server required for normal use.
+
+### Quil desktop viewer
+
 From **this repo**:
 
 ```bash

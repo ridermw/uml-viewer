@@ -1,0 +1,6 @@
+{:title "Catalog project"
+ :packages [{:id :domain :label "Domain"
+             :classes [{:id :catalog :name "Catalog" :ns "example.catalog"
+                        :lang :python :file "src/catalog.py"
+                        :ops [{:name "find" :args ["isbn"] :returns "Book"}]}]}]
+ :edges []}

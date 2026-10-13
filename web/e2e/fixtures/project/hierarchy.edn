@@ -1,0 +1,7 @@
+{:hierarchical true
+ :title "Hierarchical catalog"
+ :classes [{:id :alpha.catalog :name "Catalog" :ns "example.catalog"
+            :lang :python :file "src/catalog.py"
+            :ops [{:name "find" :text "find(isbn)"}]}]
+ :edges []
+ :order [:alpha.catalog]}

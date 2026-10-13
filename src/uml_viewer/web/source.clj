@@ -1,10 +1,6 @@
 (ns uml-viewer.web.source
   (:require [clojure.string :as str]
             [uml-viewer.source :as source]
-            [uml-viewer.clojure-language.source-clojure]
-            [uml-viewer.python-language.source-python]
-            [uml-viewer.rust-language.source-rust]
-            [uml-viewer.typescript-language.source-typescript]
             [uml-viewer.web.model :as model]
             [uml-viewer.web.paths :as paths])
   (:import [java.nio.file Files LinkOption Path]))

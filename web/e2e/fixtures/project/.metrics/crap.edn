@@ -1,0 +1,2 @@
+{:entries [{:namespace "example.catalog" :name "find"
+            :complexity 3 :coverage 75.0 :crap 3.5}]}

@@ -44,13 +44,16 @@
 (defn compile-view
   "Compile the hierarchical view at `focus`, or the stacked document.
   `extra` is a boolean (legacy proposal?) or
-  `{:proposal-id :declutter :proposal}`."
+  `{:proposal-id :declutter :proposal :metrics}`.
+  Supplied `:metrics` reuse an already loaded snapshot."
   ([doc] (compile-view doc (System/getProperty "user.dir") []))
   ([doc metrics-root] (compile-view doc metrics-root []))
   ([doc metrics-root focus] (compile-view doc metrics-root focus {}))
   ([doc metrics-root focus extra]
    (let [opts (compile-opts extra)
-         painted (overlay/apply-metrics doc (overlay/load-metrics metrics-root))
+         painted (overlay/apply-metrics doc (if (contains? opts :metrics)
+                                              (:metrics opts)
+                                              (overlay/load-metrics metrics-root)))
          focus (or focus [])
          pid (compile-proposal-id opts painted)
          open-layer (:open-layer opts)]

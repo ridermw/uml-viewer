@@ -6,7 +6,7 @@
             [uml-viewer.engine.route :as route]))
 
 (defn- qid [idx id]
-  (keyword (str "d" idx "-" (name id))))
+  (keyword (str "d" idx "-" (subs (str id) 1))))
 
 (defn- move-rect [r dx dy]
   (geom/rect (+ (:x r) dx) (+ (:y r) dy) (:w r) (:h r)))

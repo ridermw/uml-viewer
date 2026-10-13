@@ -5,12 +5,12 @@
  :out "examples/uml-viewer.edn"
  :hierarchical true
  :foreign [quil javax.swing]
- :order [main adapters application engine source graph
+ :order [main adapters web application engine source graph
          clojure-language typescript-language rust-language python-language domain]
  :levels [[domain source graph clojure-language typescript-language rust-language python-language]
           [engine]
           [application]
-          [adapters]
+          [adapters web]
           [main]]
  :edge-kinds {[:engine.compose :engine.layout] :association
               [:engine.compose :engine.route] :association
