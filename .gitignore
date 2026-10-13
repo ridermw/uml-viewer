@@ -5,3 +5,7 @@ target
 .uml-viewer/
 uml-viewer-log.txt
 .worktrees/
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/

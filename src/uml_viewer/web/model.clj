@@ -69,7 +69,12 @@
   (merge (zipmap metric-keys (repeat nil)) m))
 
 (defn- class-dto [c]
-  (let [risk (config/crap-risk (:crap c))
+  (let [c (reduce (fn [c key]
+                    (if (some? (get c key)) c
+                        (let [values (keep key (:ops c))]
+                          (if (seq values) (assoc c key (reduce + values)) c))))
+                  c [:killed :survived :uncovered :sites])
+        risk (config/crap-risk (:crap c))
         score (executed-mutation-score c)]
     (-> (metrics c)
         (assoc :package (:package c) :ns (:ns c) :file (:file c) :lang (:lang c)
