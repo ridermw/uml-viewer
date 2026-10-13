@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { message, request } from "./api";
 import { Explorer } from "./Explorer";
+import { Diagram } from "./Diagram";
 import { Inspector } from "./Inspector";
 import { OpenProject } from "./OpenProject";
 import type { MetricMode, Snapshot } from "./types";
@@ -15,6 +16,7 @@ export default function App() {
   const [busy, setBusy] = useState(true);
   const [open, setOpen] = useState(false);
   const sequence = useRef(0);
+  const searchInput = useRef<HTMLInputElement>(null);
   const replace = (data: Snapshot) => {
     setSnapshot(data);
     setSelected(previous => data.scene.classes.some(c => c.id === previous) ? previous : null);
@@ -26,6 +28,16 @@ export default function App() {
       if (!controller.signal.aborted && id === sequence.current) { replace(data); setBusy(false); }
     }).catch(cause => { if (!controller.signal.aborted && id === sequence.current) { setError(message(cause)); setBusy(false); } });
     return () => controller.abort();
+  }, []);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (event.key === "/" && !(target instanceof HTMLElement && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName)))) {
+        event.preventDefault(); searchInput.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", keydown);
+    return () => document.removeEventListener("keydown", keydown);
   }, []);
   const operation = async (path: string, body: object, close = false) => {
     const id = ++sequence.current;
@@ -46,7 +58,7 @@ export default function App() {
   return <div className="app">
     <header className="titlebar"><div aria-hidden="true" className="window-dots"><i/><i/><i/></div><h1>UML Viewer</h1><span className="local-badge">LOCAL</span></header>
     <div className="toolbar"><span className="project-name">{snapshot?.project.title ?? "Project"}</span>
-      <label className="search"><span className="muted">Search</span><input aria-label="Search classes or methods" placeholder="Classes, namespaces, or methods" value={query} onChange={e => setQuery(e.target.value)}/><kbd>/</kbd></label>
+      <label className="search"><span className="muted">Search</span><input ref={searchInput} aria-label="Search classes or methods" placeholder="Classes, namespaces, or methods" value={query} onChange={e => setQuery(e.target.value)}/><kbd>/</kbd></label>
       <button className="primary" onClick={() => { setError(null); setOpen(true); }}>Open Project</button>
     </div>
     {error && !open && <div className="error-banner" role="alert">{error}</div>}
@@ -62,7 +74,7 @@ export default function App() {
           {!!snapshot?.focus.length && <button disabled={busy} onClick={() => focus(snapshot.focus.slice(0, -1))}>Up</button>}
         </nav><label>Metric color <select aria-label="Metric color" value={metric} onChange={e => setMetric(e.target.value as MetricMode)}><option value="crap">CRAP risk</option><option value="coverage">Coverage</option><option value="mutation">Mutation</option></select></label></div>
         {busy && <div className="loading" role="status">Loading diagram...</div>}
-        <div className="class-list">{snapshot?.scene.classes.map(c => <button key={c.id} onClick={() => setSelected(c.id)}>{c.name}</button>)}</div>
+        {snapshot && <Diagram scene={snapshot.scene} selectedId={selected} metric={metric} onSelect={setSelected} onDrill={drill}/>}
       </section>
       <aside className="inspector pane"><div className="pane-title"><h2>Inspector</h2><span className="small muted">{node?.lang ?? ""}</span></div><div className="inspector-content">
         {node && snapshot ? <Inspector key={`${snapshot.revision}:${node.id}`} node={node} snapshot={snapshot} onSelect={setSelected} onDrill={drill}/> : <div className="empty-inspector"><span className="class-icon large">C</span><h3>Explore your architecture</h3><p>Select a class to inspect metrics, relationships, and source.</p></div>}
