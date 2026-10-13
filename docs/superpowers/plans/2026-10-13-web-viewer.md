@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- "Basic exploration must not require Grok or another agent."
+- "Basic exploration must not require Copilot CLI or another agent."
 - "No project data is uploaded to a remote service."
 - "Do not change the existing `:run`, `:uml-viewer`, or restart behavior."
 - "Missing values must remain null."

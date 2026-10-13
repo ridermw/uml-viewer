@@ -208,7 +208,7 @@
       (.getPath (io/file (overlay/metrics-root (:path state)) p)))))
 
 (defn apply-mail
-  "Act on one unread command from the companion Grok."
+  "Act on one unread command from the companion Copilot CLI session."
   [state cmd]
   (let [state (assoc state :mail-seen (:id cmd))]
     (case (keyword (:op cmd))

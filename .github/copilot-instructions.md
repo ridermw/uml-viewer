@@ -18,16 +18,17 @@ The diagram is already on screen.
   them when rewriting policy. Do not invent them on launch. The inspector
   lists them; **P** returns to the namespace tree. If instructed, add a
   named proposal (default name is a timestamp) and regenerate the IR.
-- After source or policy change: `clj -M:crap`, `clj -M:mutate` on changed
-  `src/` files (differential), then `clj -M:ir`. Uncovered mutants are
-  coverage gaps: keep the snapshot; do not re-run the file or force a
-  full mutation because mutate exited non-zero.
+- After source or policy change: `crapper` from the project root (no
+  path, filter, or `--changed`), `mutator` on changed `src/` files
+  (differential), then `clj -M:ir`. Uncovered mutants are coverage gaps:
+  keep the snapshot; do not re-run the file or force a full mutation
+  because mutator exited non-zero.
 - Mail files are queues `{:next-id n :queue [cmd …]}`. Pop the head of
   `:queue` as you handle it (rewrite the file). Oldest first.
-- Right-click mail (`to-agent.edn`): `:refresh-crap` → `clj -M:crap` for
-  that class or component then IR. `:refresh-mutate` → differential
-  `clj -M:mutate` on those src files. `:refresh-mutate-all` →
-  `clj -M:mutate --mutate-all` on those files. `:omit` → add `:id` to
+- Right-click mail (`to-agent.edn`): `:refresh-crap` → whole-project
+  `crapper` then IR. `:refresh-mutate` → differential `mutator` on those
+  src files. `:refresh-mutate-all` → `mutator --mutate-all` on those
+  files. `:omit` → add `:id` to
   the current proposal's `:omit`, or to policy `:omit` on the real
   diagram, then IR.
 - `:context` mail: `{:context :real}` or `{:context :proposal :proposal-id
@@ -44,8 +45,8 @@ The diagram is already on screen.
   `.uml-viewer/to-viewer.edn`, wait for the JVM to exit, then
   `./uml --restart`. Do not pass `--restart` except through that
   wrapper. Do not SIGKILL. Closing the viewer kills only this
-  companion's tmux session, not other Grok agents. If this Grok
-  process dies, tmux respawns it in the same pane.
+  companion's tmux session, not other Copilot CLI sessions. If this
+  Copilot CLI process dies, tmux respawns it in the same pane.
 
 Do not commit or push unless asked. Esc interrupts a turn in this terminal;
 do not kill the process on interrupt.

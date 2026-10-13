@@ -5,7 +5,8 @@
         :main-opts ["-m" "uml-viewer.main.web-viewer"]}
   :spec {:extra-paths ["spec"]
          :extra-deps {speclj/speclj {:mvn/version "3.12.2"}
-                      quil/quil {:mvn/version "4.3.1563"}}
+                      quil/quil {:mvn/version "4.3.1563"}
+                      org.clojure/data.json {:mvn/version "2.5.1"}}
          ;; macOS activates a JVM that touches AWT and takes the keyboard
          ;; and mouse. Specs build Swing components, so stay in the background.
          :jvm-opts ["-Dapple.awt.UIElement=true"]
@@ -13,7 +14,8 @@
   :cov {:extra-paths ["spec"]
         :extra-deps {cloverage/cloverage {:mvn/version "1.2.4"}
                      speclj/speclj {:mvn/version "3.12.2"}
-                     quil/quil {:mvn/version "4.3.1563"}}
+                     quil/quil {:mvn/version "4.3.1563"}
+                     org.clojure/data.json {:mvn/version "2.5.1"}}
         :jvm-opts ["-Dapple.awt.UIElement=true"]
         :main-opts ["-m" "speclj.cloverage"
                     "-c" "--tag" "~no-mutate" "spec"
@@ -27,7 +29,8 @@
                          :git/sha "c8c0eedf34dafec270e13e74a106ff1703578d28"}
                         org.clojure/tools.reader {:mvn/version "1.4.2"}
                         speclj/speclj {:mvn/version "3.12.2"}
-                        quil/quil {:mvn/version "4.3.1563"}}
+                        quil/quil {:mvn/version "4.3.1563"}
+                        org.clojure/data.json {:mvn/version "2.5.1"}}
            :jvm-opts ["-Dapple.awt.UIElement=true"]
            :main-opts ["-m" "clj-mutate.core"]}
   :ir {:main-opts ["-m" "uml-viewer.main.ir-generator"]}

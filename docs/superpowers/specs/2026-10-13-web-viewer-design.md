@@ -5,7 +5,7 @@
 Build a local browser interface matching the approved three-pane MockUI
 concept: project explorer, architecture canvas, and metrics/source inspector.
 Keep the existing Clojure analysis and layout core and the existing Quil
-application. Basic exploration must not require Grok or another agent.
+application. Basic exploration must not require Copilot CLI or another agent.
 
 The first milestone is a working viewer for real EDN diagrams and existing
 metric snapshots, not a replacement for every analysis or agent workflow.

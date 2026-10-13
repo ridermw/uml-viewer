@@ -44,7 +44,7 @@
        "   add a named proposal to :proposals in the policy (default name is a\n"
        "   timestamp) and regenerate the IR.\n"
        "TypeScript, Rust, and Python are scanners beside Clojure. A Clojure project keeps\n"
-       ":lang :clojure (the default) and the CRAP and mutation steps below.\n"
+       ":lang :clojure (the default). Every language takes the CRAP and mutation steps below.\n"
        "Another language sets :lang. More than one language sets :sources, each\n"
        "entry {:lang :root :prefix?}. The policy :prefix is stripped to make\n"
        "ids. A source :prefix is that tree's namespace root, for example\n"
@@ -54,11 +54,13 @@
        "Python is one class per .py module. import and from-import are dependencies.\n"
        "class Child(Base) is inheritance when Base is a project module. A base of\n"
        "Protocol or ABC is implements.\n"
-       "For a non-Clojure language, run that language's CRAP and mutation tools\n"
-       "when they exist. Snapshots join by the class :ns, then by the class id.\n"
-       "Then regenerate the IR.\n"
-       "2. Run clj -M:crap.\n"
-       "3. Run clj -M:mutate on each changed file under src/ (differential).\n"
+       "crapper and mutator score Clojure, Java, Go, TypeScript, Rust, and Python.\n"
+       "Their snapshots join by the class :ns, then by the class id.\n"
+       "2. Run crapper from the project root with no path or filter. A path,\n"
+       "   filter, or --changed rewrites .metrics/crap.edn with only those files.\n"
+       "3. Run mutator on each changed source file (differential once a snapshot\n"
+       "   exists). Exit 3 means a mutant survived; that is a result, not a\n"
+       "   failure. Exit 2 means the baseline tests fail and nothing was written.\n"
        "   Uncovered mutants are coverage gaps: keep the snapshot; do not\n"
        "   re-run the file or pass --mutate-all because of them.\n"
        "4. Regenerate the IR so the EDN mtime updates.\n"
@@ -70,10 +72,10 @@
        "and right-click element ops:\n"
        "{:id n :op :refresh-crap :target {...}}, :refresh-mutate,\n"
        ":refresh-mutate-all, :omit. :target is {:id :ns :kind :class|:component\n"
-       " :proposal-id?}. For :refresh-crap run clj -M:crap (that class or the\n"
-       " files under that component) then IR. For :refresh-mutate run\n"
-       " clj -M:mutate on those src files (differential). For\n"
-       " :refresh-mutate-all pass --mutate-all on those files. For :omit, if\n"
+       " :proposal-id?}. For :refresh-crap run crapper (the whole project, as in\n"
+       " step 2) then IR. For :refresh-mutate run mutator on that class's file or\n"
+       " the files under that component (differential). For\n"
+       " :refresh-mutate-all run mutator --mutate-all on those files. For :omit, if\n"
        " :proposal-id is set add :id to that proposal's :omit; otherwise add it\n"
        " to policy :omit. Then regenerate the IR.\n"
        ":context means the inspector selection is the discussion context:\n"
@@ -92,8 +94,8 @@
        "changes. To restart it: write :quit-for-restart, wait for the JVM to\n"
        "exit, then ./uml --restart. Do not pass --restart except through that\n"
        "wrapper (or :uml-viewer-restart). Do not SIGKILL. Closing the viewer\n"
-       "kills only this companion's tmux session, not other Grok agents. If\n"
-       "this Grok process dies, tmux respawns it in the same pane.\n"
+       "kills only this companion's tmux session, not other Copilot CLI sessions.\n"
+       "If this Copilot CLI process dies, tmux respawns it in the same pane.\n"
        "Do not commit or push unless asked.\n"))
 
 (def launch-prompt
@@ -101,20 +103,43 @@
        "to match the project's namespaces (no invented layers/components), regenerate the "
        "IR, then wait for directives."))
 
-(defn grok-executable
+(defn instructions-root
+  "Directory named in COPILOT_CUSTOM_INSTRUCTIONS_DIRS for the companion.
+  Copilot CLI reads `.github/instructions/*.instructions.md` under it."
+  [cwd]
+  (.getCanonicalPath (io/file (or cwd ".") ".uml-viewer")))
+
+(defn instructions-file
+  [cwd]
+  (io/file (instructions-root cwd) ".github" "instructions"
+           "uml-viewer-companion.instructions.md"))
+
+(defn write-instructions!
+  "Write the standing rules where the companion's Copilot CLI loads them."
+  [cwd]
+  (let [f (instructions-file cwd)]
+    (io/make-parents f)
+    (spit f (str "---\napplyTo: \"**\"\n---\n" standing-rules))
+    f))
+
+(defn copilot-candidates
+  "Copilot CLI paths to try: COPILOT_BIN, the install script's ~/.local/bin,
+  then Homebrew and /usr/local."
+  [named home]
+  (filterv identity
+           [named
+            (when home (str home "/.local/bin/copilot"))
+            "/opt/homebrew/bin/copilot"
+            "/usr/local/bin/copilot"]))
+
+(defn copilot-executable
   []
-  (let [home (System/getenv "HOME")
-        named (System/getenv "GROK_BIN")
-        candidates (filter identity
-                           [named
-                            (when home (str home "/.grok/bin/grok"))
-                            "/usr/local/bin/grok"
-                            "/opt/homebrew/bin/grok"])]
-    (or (first (filter (fn [p]
-                         (let [f (io/file p)]
-                           (and (.isFile f) (.canExecute f))))
-                       candidates))
-        "grok")))
+  (or (first (filter (fn [p]
+                       (let [f (io/file p)]
+                         (and (.isFile f) (.canExecute f))))
+                     (copilot-candidates (System/getenv "COPILOT_BIN")
+                                         (System/getenv "HOME"))))
+      "copilot"))
 
 (defonce !session-name (atom nil))
 
@@ -126,8 +151,6 @@
                  (str/replace #"[^A-Za-z0-9_-]" "-"))
         h (Integer/toHexString (hash path))]
     (str "uml-viewer-" base "-" h)))
-
-(def legacy-session "uml-viewer-grok")
 
 (defn current-session
   "Session name for this project, from companion.edn or the live atom."
@@ -146,12 +169,11 @@
     (catch Exception _ 1)))
 
 (defn session-candidates
-  "Names to try, unique first, then the pre-isolation session."
+  "Names to try: companion.edn, the live atom, then this project's id."
   [root]
   (->> [(:session (mailbox/read-companion root))
         @!session-name
-        (when root (session-id root))
-        legacy-session]
+        (when root (session-id root))]
        (filter seq)
        distinct
        vec))
@@ -175,11 +197,10 @@
   ([cwd] (new-session-args cwd (session-id cwd)))
   ([cwd session]
    ["new-session" "-d" "-s" session "-c" cwd
-    "-e" "GROK_THEME=terminal"
-    "-e" "GROK_TERMINAL_THEME=1"
     "-e" "COLORTERM=truecolor"
-    (grok-executable) "--yolo" "--trust" "--rules" standing-rules
-    launch-prompt]))
+    "-e" "COPILOT_ALLOW_ALL=true"
+    "-e" (str "COPILOT_CUSTOM_INSTRUCTIONS_DIRS=" (instructions-root cwd))
+    (copilot-executable) "--yolo" "-i" launch-prompt]))
 
 (defn kill-session-args
   ([] (kill-session-args (current-session)))
@@ -200,7 +221,7 @@
     ["send-keys" "-t" session "C-j"]]))
 
 (defn notify-agent!
-  "Wake the companion Grok session. Returns false if tmux/session is missing."
+  "Wake the companion Copilot CLI session. Returns false if tmux/session is missing."
   ([] (notify-agent! (System/getProperty "user.dir")))
   ([root]
    (if-let [session (live-session root)]
@@ -214,13 +235,13 @@
      false)))
 
 (defn request-agent!
-  "Queue `op` for the companion and wake Grok. Returns {:cmd :woke?}."
+  "Queue `op` for the companion and wake it. Returns {:cmd :woke?}."
   [root op extra]
   (let [cmd (mailbox/write-command! (mailbox/to-agent root) op extra)]
     {:cmd cmd :woke? (notify-agent! root)}))
 
 (defn request-regen!
-  "Queue a :regen command and wake Grok. Returns {:cmd :woke?}."
+  "Queue a :regen command and wake the companion. Returns {:cmd :woke?}."
   [root]
   (request-agent! root :regen {}))
 
@@ -240,7 +261,7 @@
 (defn terminal-title
   ([] (terminal-title (current-session)))
   ([session]
-   (or session "UML Grok")))
+   (or session "UML Copilot")))
 
 (defonce !terminal-window-id (atom nil))
 
@@ -257,18 +278,18 @@
    (let [title (terminal-title session)]
      (str "tell application \"Terminal\"\n"
           "launch\n"
-          "set grokTab to do script " (pr-str shell-cmd) "\n"
-          "set background color of grokTab to " (applescript-rgb draw/bg) "\n"
-          "set normal text color of grokTab to " (applescript-rgb draw/ink) "\n"
-          "set bold text color of grokTab to " (applescript-rgb draw/gold) "\n"
-          "set cursor color of grokTab to " (applescript-rgb draw/gold) "\n"
-          "set font name of grokTab to \"Menlo\"\n"
-          "set font size of grokTab to 13\n"
-          "set custom title of grokTab to \"" title "\"\n"
-          "set title displays custom title of grokTab to true\n"
-          "set title displays device name of grokTab to false\n"
-          "set title displays shell path of grokTab to false\n"
-          "set title displays settings name of grokTab to false\n"
+          "set companionTab to do script " (pr-str shell-cmd) "\n"
+          "set background color of companionTab to " (applescript-rgb draw/bg) "\n"
+          "set normal text color of companionTab to " (applescript-rgb draw/ink) "\n"
+          "set bold text color of companionTab to " (applescript-rgb draw/gold) "\n"
+          "set cursor color of companionTab to " (applescript-rgb draw/gold) "\n"
+          "set font name of companionTab to \"Menlo\"\n"
+          "set font size of companionTab to 13\n"
+          "set custom title of companionTab to \"" title "\"\n"
+          "set title displays custom title of companionTab to true\n"
+          "set title displays device name of companionTab to false\n"
+          "set title displays shell path of companionTab to false\n"
+          "set title displays settings name of companionTab to false\n"
           "set winID to id of front window\n"
           "end tell\n"
           "tell application \"System Events\"\n"
@@ -306,7 +327,7 @@
     (catch Exception _ "")))
 
 (defn close-terminal-window!
-  "Close the Terminal window that attached to the grok session."
+  "Close the Terminal window that attached to the companion session."
   []
   (run-osascript (close-terminal-script @!terminal-window-id))
   (reset! !terminal-window-id nil))
@@ -319,7 +340,7 @@
     (apply tmux! (kill-session-args session))))
 
 (defn- arm-respawn!
-  "If Grok dies, tmux restarts that pane only — not other agents."
+  "If Copilot CLI dies, tmux restarts that pane only — not other agents."
   [session]
   (let [pane (str session ":0.0")]
     (tmux! "set-option" "-p" "-t" pane "remain-on-exit" "on")
@@ -327,7 +348,7 @@
     (tmux! "set-option" "-t" session "status" "off")))
 
 (defn open-in-terminal!
-  "Start this project's companion Grok in its own tmux session."
+  "Start this project's companion Copilot CLI in its own tmux session."
   ([] (open-in-terminal! (System/getProperty "user.dir")))
   ([cwd]
    (let [session (session-id cwd)
@@ -336,6 +357,7 @@
      (when (and previous (not= previous session))
        (kill-companion-session! previous))
      (kill-companion-session! session)
+     (write-instructions! cwd)
      (let [code (apply tmux! (new-session-args cwd session))]
        (when-not (zero? code)
          (binding [*out* *err*]
@@ -752,7 +774,7 @@
         {:keys [woke?]} (request-regen! root)]
     (assoc state :mail-status (if woke?
                                 "Regen requested."
-                                "Regen queued; Grok session not attached."))))
+                                "Regen queued; Copilot session not attached."))))
 
 (defn- proposal-menu-click? [event hit]
   (and (right-click? event) (= :proposal (:kind hit))))

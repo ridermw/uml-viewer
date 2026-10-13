@@ -38,8 +38,11 @@ the arrows, colors CRAP, and lets you click.
 
 The IR is **topology**: the namespace tree, classes, and edges. **Metrics**
 (CC, coverage, CRAP, killed/survived/uncovered) come from `.metrics/`
-snapshots produced by [crap4clj](https://github.com/unclebob/crap4clj) and
-[clj-mutate](https://github.com/unclebob/clj-mutate). The viewer overlays
+snapshots produced by [crapper](https://github.com/unclebob/crapper) and
+[mutator](https://github.com/unclebob/mutator) (for Clojure,
+[crap4clj](https://github.com/unclebob/crap4clj) and
+[clj-mutate](https://github.com/unclebob/clj-mutate) write the same files).
+The viewer overlays
 those files at load, keyed by namespace and function name. Agents edit the
 policy, not the IR. See [Policy](#policy).
 
@@ -50,7 +53,7 @@ Needs Clojure CLI and Java 21+.
 ### Local browser viewer
 
 The browser interface provides a project explorer, interactive SVG diagram,
-and metrics/source inspector. It loads immediately without Grok and keeps
+and metrics/source inspector. It loads immediately without Copilot CLI and keeps
 project data on this machine. The existing Quil application below is unchanged.
 
 From this repository, using Node 22.22.2+ in the Node 22 release line:
@@ -140,15 +143,22 @@ The diagram is its own JVM. Exceptions and JVM output append to
 **`uml-viewer-log.txt`** in the project directory (gitignored). `clj -M:run`
 still holds the terminal; prefer `./uml`.
 
-A **tmux** session unique to the examined project starts interactive Grok in
-that directory (`--yolo --trust --rules …` plus a launch prompt). The name is
+A **tmux** session unique to the examined project starts interactive
+[Copilot CLI](https://github.com/github/copilot-cli) in that directory
+(`copilot --yolo -i <launch prompt>`). `COPILOT_BIN` names the executable;
+otherwise `~/.local/bin/copilot`, Homebrew, `/usr/local/bin`, then `PATH` are
+tried. `COPILOT_ALLOW_ALL=true` skips the folder-trust prompt. The standing
+rules are written to
+`.uml-viewer/.github/instructions/uml-viewer-companion.instructions.md` and
+loaded through `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`, so only the companion
+session sees them. The name is
 `uml-viewer-<project>-<hash>`, stored in `.uml-viewer/companion.edn`. On start
 it writes a hierarchical policy from that project's namespaces and regenerates
 the IR. Type there; Esc is the real TUI interrupt. Closing the diagram kills
-**only that** tmux session and its Terminal window — other Grok agents stay
-up. If that Grok process dies, tmux respawns it in the same pane. That
-instance also runs `clj -M:crap`, `clj -M:mutate`, and IR generate after later
-changes. Project-wide rules live in `.grok/rules/uml-viewer.md`.
+**only that** tmux session and its Terminal window — other Copilot CLI
+sessions stay up. If that Copilot CLI process dies, tmux respawns it in the
+same pane. That instance also runs `crapper`, `mutator`, and IR generate after
+later changes. Project-wide rules live in `.github/copilot-instructions.md`.
 
 Prefer `./uml` in the examined project (from `get-uml-viewer`). Aliases
 `:uml-viewer` / `:uml-viewer-restart` still work if present.
@@ -159,13 +169,13 @@ Prefer `./uml` in the examined project (from `get-uml-viewer`). Aliases
 | `./uml --restart` | **associated agent only** | New JVM, same companion. Restores the last view. |
 
 Do **not** pass `--restart` unless you are that companion recycling the
-window after source changes. A stray `--restart` skips spawning Grok and
+window after source changes. A stray `--restart` skips spawning the companion and
 leaves a diagram with no agent. The companion recycles the window by
 writing `:quit-for-restart` to `.uml-viewer/to-viewer.edn`, waiting for
 the JVM to exit, then `./uml --restart`. The new JVM restores depth, pan,
 zoom, and which proposal was showing (`.uml-viewer/session.edn`). Do not
 SIGKILL. Closing the window kills only that project's companion, not other
-Grok agents.
+Copilot CLI sessions.
 
 On a fresh start the canvas stays blank until the companion sends `:display`,
 with **Waiting for agent to create diagram.** `R` reloads the current EDN
@@ -181,7 +191,9 @@ clj -M:mutate src/uml_viewer/engine/layout.clj
 ```
 
 This project's `:crap` alias uses `../clojure/crap4clj`. `:mutate` pins
-[clj-mutate](https://github.com/unclebob/clj-mutate) by git SHA. Commit
+[clj-mutate](https://github.com/unclebob/clj-mutate) by git SHA. Without
+that checkout, `crapper` (from the root, no arguments) and
+`mutator src/uml_viewer/engine/layout.clj` write the same snapshots. Commit
 `.metrics/` so a clone has numbers without re-running those tools.
 
 Rename or move of a function is a new form: overlay does not match old names.
@@ -352,7 +364,8 @@ tree's namespace root. `src/model.ts` becomes `bookwriter.model`
 | `:sources` | One scan per `{:lang :root :prefix?}`. The entry `:prefix` is that tree's namespace root |
 | `:foreign` | External libs as ovals. A listed prefix collapses `quil.core` to `quil`. Unlisted externals are dropped |
 
-**Viewer Grok loop** (passed with `--rules` to the companion session only)
+**Companion loop** (standing rules loaded through
+`COPILOT_CUSTOM_INSTRUCTIONS_DIRS` by the companion session only)
 
 On launch: from the examined directory, write or update the hierarchical
 policy and regenerate the IR, then wait.
@@ -360,14 +373,18 @@ policy and regenerate the IR, then wait.
 After **every** later source or policy change, refresh metrics and
 regenerate the IR.
 
-For Clojure that is `clj -M:crap`, then `clj -M:mutate` on the changed
-`src/` files, then `clj -M:ir`. Uncovered mutants that remain are coverage
-gaps. Keep the snapshot. Do not re-run the file or force a full mutation
-because mutate exited non-zero.
+For every language that is `crapper` from the project root, then
+`mutator` on the changed source files, then IR generate (`clj -M:ir` here).
+crapper and mutator score Clojure, Java, Go, TypeScript, Rust, and Python.
+Run crapper with no path, filter, or `--changed`: those rewrite
+`.metrics/crap.edn` with only the selected files. mutator is differential
+once a snapshot exists. Its exit 3 means a mutant survived, which is a
+result; exit 2 means the baseline tests fail and nothing was written.
+Uncovered mutants that remain are coverage gaps. Keep the snapshot. Do not
+re-run the file or force a full mutation because mutator exited non-zero.
 
-For another language, run that language's CRAP and mutation tools when
-they exist. The overlay joins each snapshot by `:ns`, then by the class
-id. Missing CRAP or mutation data is red. Then regenerate the IR.
+The overlay joins each snapshot by `:ns`, then by the class id. Missing
+CRAP or mutation data is red.
 
 - Add/rename/delete a namespace: the tree updates on `clj -M:ir`. Put a new
   top-level **segment** in `:order` if you care about box order.
@@ -452,7 +469,7 @@ and C/M dots; double-click still opens a component.
              :omit [cli]}]
 ```
 
-Companion Grok must not invent `:proposals` on launch and must keep them when
+The companion must not invent `:proposals` on launch and must keep them when
 updating `:order`. If instructed, add a named proposal and regenerate the IR.
 
 The viewer draws a violating arrow **red**, and **bold red** when a selected
@@ -460,13 +477,14 @@ element highlights it. Hand-written IR may set `:violating true` directly.
 
 ## Companion mailbox
 
-The viewer and the companion Grok talk through `.uml-viewer/` in the examined
-project (gitignored). The file is the mail; tmux is only a doorbell.
+The viewer and the companion Copilot CLI session talk through `.uml-viewer/`
+in the examined project (gitignored). The file is the mail; tmux is only a
+doorbell.
 
 | File | Direction |
 |------|-----------|
-| `.uml-viewer/to-viewer.edn` | Grok → viewer |
-| `.uml-viewer/to-agent.edn` | viewer → Grok |
+| `.uml-viewer/to-viewer.edn` | companion → viewer |
+| `.uml-viewer/to-agent.edn` | viewer → companion |
 
 Each mailbox file is a small queue `{:next-id n :queue [cmd …]}` (tmp-then-rename).
 Commands have a rising `:id`. Append; do not overwrite. Handling a command
@@ -482,25 +500,26 @@ touches another project's agent.
 | `:op` | Meaning |
 |-------|---------|
 | `:display` | Viewer loads `:path` (relative to the project root) |
-| `:regen` | Grok rewrites hierarchical policy, regenerates IR, then `:display` |
-| `:quit-for-restart` | Viewer exits the JVM without killing Grok. The associated agent then runs `clj -M:uml-viewer-restart`. |
-| `:refresh-crap` | Run CRAP on `:target` (class or component), then IR |
-| `:refresh-mutate` | Differential mutate `:target`'s src files, then IR |
-| `:refresh-mutate-all` | `clj -M:mutate --mutate-all` on `:target`'s src files, then IR |
+| `:regen` | The companion rewrites hierarchical policy, regenerates IR, then `:display` |
+| `:quit-for-restart` | Viewer exits the JVM without killing the companion. The associated agent then runs `clj -M:uml-viewer-restart`. |
+| `:refresh-crap` | Run `crapper` on the whole project to refresh `:target` (class or component), then IR |
+| `:refresh-mutate` | Differential `mutator` on `:target`'s src files, then IR |
+| `:refresh-mutate-all` | `mutator --mutate-all` on `:target`'s src files, then IR |
 | `:omit` | Add `:target` `:id` to proposal or policy `:omit`, then IR |
 | `:context` | Inspector selection is the discussion context: `{:context :real}` or `{:context :proposal :proposal-id id :name "…"}` |
 
 Clicking **Real diagram** or a proposal (including **New Proposal**) writes
-`:context` and wakes Grok. Stay on that architecture until the next
+`:context` and wakes the companion. Stay on that architecture until the next
 `:context`.
 
 Right-click ops include `:target {:id :ns :kind :class|:component :proposal-id?}`.
 `:kind` is `:component` for a layer box (and its nested nses) and `:class`
 for a module.
 
-**Regen** in the inspector queues `:regen` and wakes Grok with literal text, a
-150ms pause, `C-m`, 50ms, then `C-j` (same timing as SwarmForge). The wake-up
-does not contain the command. If Grok is busy, it finishes first, then reads
+**Regen** in the inspector queues `:regen` and wakes the companion with literal
+text, a 150ms pause, `C-m`, 50ms, then `C-j` (same timing as SwarmForge). The
+wake-up does not contain the command. If the companion is busy, it finishes
+first, then reads
 the mailbox. If tmux is missing, the button still writes the file and the
 inspector says the session is not attached.
 
