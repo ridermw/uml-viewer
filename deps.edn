@@ -1,7 +1,9 @@
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.12.0"}}
  :aliases
- {:spec {:extra-paths ["spec"]
+ {:web {:extra-deps {org.clojure/data.json {:mvn/version "2.5.1"}}
+        :main-opts ["-m" "uml-viewer.main.web-viewer"]}
+  :spec {:extra-paths ["spec"]
          :extra-deps {speclj/speclj {:mvn/version "3.12.2"}
                       quil/quil {:mvn/version "4.3.1563"}}
          ;; macOS activates a JVM that touches AWT and takes the keyboard
