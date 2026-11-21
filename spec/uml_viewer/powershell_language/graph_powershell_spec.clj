@@ -1,0 +1,49 @@
+(ns uml-viewer.powershell-language.graph-powershell-spec
+  (:require [clojure.java.io :as io]
+            [speclj.core :refer :all]
+            [uml-viewer.graph :as graph]
+            [uml-viewer.powershell-language.graph-powershell :as ps-graph]
+            [uml-viewer.powershell-language.source-powershell :as ps-source]
+            [uml-viewer.source :as source])
+  (:import [java.nio.file Files]
+           [java.nio.file.attribute FileAttribute]))
+
+(defn- temp-root []
+  (.toFile (Files/createTempDirectory "uml-ps-" (into-array FileAttribute []))))
+
+(defn- spit-file [dir rel content]
+  (let [f (io/file dir rel)]
+    (.mkdirs (.getParentFile f))
+    (spit f content)
+    f))
+
+(describe "PowerShell LanguageGraph and LanguageSource"
+  (it "derives project-root-relative namespaces, resolves static deps, keeps bin/, and skips *.Tests.ps1"
+    (let [dir (temp-root)]
+      (spit-file dir "src/Core/Math.psm1"
+                 (str "function Get-Total-Ex { param($x) return $x + 1 }\n"
+                      "function Get-Total { param($x) return $x }\n"))
+      (spit-file dir "scripts/Deploy.ps1"
+                 (str "#Requires -Modules Az.Accounts\n"
+                      "# . \"$PSScriptRoot/../src/Core/Fake.ps1\"\n"
+                      ". \"$PSScriptRoot/../src/Core/Math.psm1\"\n"
+                      "function Invoke-Deploy { Get-Total 1 }\n"))
+      (spit-file dir "bin/Helper.ps1" "function Get-HelpData { return 1 }\n")
+      (spit-file dir "tests/Math.Tests.ps1" "Describe 'Math' { It 'ok' {} }\n")
+      (let [g (graph/scan ps-graph/impl dir {:prefix "" :project-root dir})
+            by-ns (into {} (map (juxt :ns identity) (:classes g)))
+            edges (set (map (juxt :from :to :kind) (:edges g)))]
+        (should-contain "Core.Math" by-ns)
+        (should-contain "scripts.Deploy" by-ns)
+        (should-contain "bin.Helper" by-ns)
+        (should-contain "Az.Accounts" by-ns)
+        (should (:foreign (get by-ns "Az.Accounts")))
+        (should-not-contain "tests.Math.Tests" by-ns)
+        (should (contains? edges [:scripts.Deploy :Core.Math :dependency]))
+        (should (contains? edges [:scripts.Deploy :Az.Accounts :dependency]))
+        ;; Get-Total must match line 2, NOT Get-Total-Ex on line 1
+        (let [math-file (.getPath (io/file dir "src/Core/Math.psm1"))
+              res (source/member-source ps-source/impl
+                                        {:lang :powershell :ns "Core.Math" :file math-file :name "Get-Total"})]
+          (should-not-be-nil res)
+          (should= 2 (:line res)))))))

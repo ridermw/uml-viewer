@@ -48,13 +48,18 @@
       ns-name)))
 
 (defn member-ident
-  "Source-window identity for a class card. `member-name` may be nil."
+  "Source-window identity for a class card. `member-name` may be nil.
+  Uses the operation's own `:file` and `:line` when available (e.g. partial files)."
   ([model] (member-ident model nil))
   ([model member-name]
-   (cond-> {:ns (:ns model)}
-     (seq (str member-name)) (assoc :name (str member-name))
-     (:lang model) (assoc :lang (:lang model))
-     (:file model) (assoc :file (:file model)))))
+   (let [op (when (seq (str member-name))
+              (first (filter #(= (str member-name) (:name %)) (get-in model [:class :ops]))))
+         file (or (:file op) (:file model))]
+     (cond-> {:ns (:ns model)}
+       (seq (str member-name)) (assoc :name (str member-name))
+       (:lang model) (assoc :lang (:lang model))
+       file (assoc :file file)
+       (:line op) (assoc :line (:line op))))))
 
 (defn model
   "Class card for the detail window, or nil if `id` is unknown."

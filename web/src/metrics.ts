@@ -24,6 +24,7 @@ export function metricBand(c: ClassNode, mode: MetricMode): Band {
 }
 export function metricLabel(c: ClassNode, mode: MetricMode): string {
   if (mode === "crap") return c.crap?.mu?.toFixed(1) ?? "N/A";
+  if (mode === "mutation" && c.incomplete) return "Incomplete";
   return percent(
     mode === "coverage" ? c.coverage : mutationScore(c.killed, c.survived),
   );
