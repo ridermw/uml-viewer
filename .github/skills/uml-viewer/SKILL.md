@@ -10,7 +10,8 @@ description: Use when drawing or viewing a project's architecture as a UML class
 uml-viewer draws a project's real namespace or module tree as UML, colors
 each class by CRAP and mutation score from `.metrics/`, and flags
 dependencies that break the Clean Architecture dependency rule: source
-dependencies point inward. It scans Clojure, TypeScript, Rust, and Python.
+dependencies point inward. It scans Clojure, TypeScript, JavaScript, Rust,
+Python, C#, and PowerShell.
 The diagram is generated: write the policy, never edit the IR.
 
 `UV` is the uml-viewer checkout, three directories above this skill's base
