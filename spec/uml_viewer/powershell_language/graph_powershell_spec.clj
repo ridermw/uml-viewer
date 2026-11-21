@@ -73,6 +73,7 @@
                       ". './src/Helper.ps1'\n"
                       "Import-Module -Force -Name Az.Accounts\n"
                       "Import-Module -AsCustomObject Other\n"
+                      "$loaded = Import-Module -Name Az.Storage -PassThru\n"
                       "Import-Module './Missing/Other.psm1'\n"
                       "Test-Import-Module ShouldIgnore\n"
                       "Write-Output Import-Module ArgFake\n"))
@@ -80,10 +81,12 @@
             by-ns (into {} (map (juxt :ns identity) (:classes g)))
             edges (set (map (juxt :from :to :kind) (:edges g)))]
         (should-contain "Az.Accounts" by-ns)
+        (should-contain "Az.Storage" by-ns)
         (should-not-contain "-Force" by-ns)
         (should-not-contain "ShouldIgnore" by-ns)
         (should-not-contain "ArgFake" by-ns)
         (should (contains? edges [:scripts.Runner (keyword "My Module") :dependency]))
         (should (contains? edges [:scripts.Runner :Helper :dependency]))
         (should (contains? edges [:scripts.Runner :Other :dependency]))
-        (should (contains? edges [:scripts.Runner :Az.Accounts :dependency]))))))
+        (should (contains? edges [:scripts.Runner :Az.Accounts :dependency]))
+        (should (contains? edges [:scripts.Runner :Az.Storage :dependency]))))))

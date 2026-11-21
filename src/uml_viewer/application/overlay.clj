@@ -241,10 +241,11 @@
     crap-fn (assoc :cc (:complexity crap-fn)
                    :crap (:crap crap-fn)
                    :coverage (pct->ratio (:coverage crap-fn)))
-    mut-fn (assoc :killed (or (:killed mut-fn) 0)
-                  :survived (or (:survived mut-fn) 0)
-                  :uncovered (or (:uncovered mut-fn) 0)
-                  :sites (counted-sites mut-fn))
+    mut-fn (-> (dissoc :invalid :errors :incomplete)
+               (assoc :killed (or (:killed mut-fn) 0)
+                      :survived (or (:survived mut-fn) 0)
+                      :uncovered (or (:uncovered mut-fn) 0)
+                      :sites (counted-sites mut-fn)))
     (and mut-fn (pos? (or (:invalid mut-fn) 0))) (assoc :invalid (:invalid mut-fn))
     (and mut-fn (pos? (or (:errors mut-fn) 0))) (assoc :errors (:errors mut-fn))
     (and mut-fn (:incomplete mut-fn)) (assoc :incomplete true)
@@ -285,6 +286,7 @@
                           :cc (apply + (map :complexity crap-fns)))
       (seq coverages) (assoc :coverage (pct->ratio
                                          (/ (reduce + coverages) (count coverages))))
+      merged-mut (dissoc :invalid :errors :incomplete)
       (seq mut-fns) (assoc :killed killed :survived survived :uncovered uncovered
                            :sites sites)
       (pos? invalid) (assoc :invalid invalid)

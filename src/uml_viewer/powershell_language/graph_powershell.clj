@@ -183,8 +183,8 @@
                          (re-find #"(?i)\.(?:ps1|psm1)$" path)
                          (static-ps-target? path))
                 (swap! refs conj {:kind :dot :target path})))))
-        ;; Import-Module: require a true command position (line start or statement/pipeline/group delimiter)
-        (let [m (re-matcher #"(?i)(?:^|[;|&({])\s*(Import-Module)(?=[ \t])" mline)]
+        ;; Import-Module: require a true command position (line start, assignment, or statement/pipeline/group delimiter)
+        (let [m (re-matcher #"(?i)(?:^|[;|&({=])\s*(Import-Module)(?=[ \t])" mline)]
           (while (.find m)
             (let [tail (subs line (min (.end m 1) (count line)))
                   target (parse-import-module-target tail)]

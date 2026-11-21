@@ -135,6 +135,25 @@
           painted (overlay/apply-metrics doc metrics)
           board (first (:classes painted))]
       (should= 5 (:killed board)))
+    ;; Overlaying a complete snapshot clears stale :incomplete/:errors/:invalid on both class and op
+    (let [stale {:hierarchical true
+                 :classes [{:id :Demo.Board :name "Board" :ns "Demo.Board" :lang :csharp
+                            :killed 4 :survived 0 :invalid 1 :errors 2 :incomplete true
+                            :ops [{:name "Move" :text "Move" :killed 4 :survived 0 :invalid 1 :errors 2 :incomplete true}]}]
+                 :edges []}
+          complete {:crap {}
+                    :mutate {"Demo.Board" {:namespace "Demo.Board"
+                                           :forms [{:id "defn/Move" :name "Move" :file "src/Board.cs" :line 3
+                                                    :killed 5 :survived 0 :uncovered 0 :invalid 0 :errors 0 :incomplete false}]}}}
+          repainted (overlay/apply-metrics stale complete)
+          cls (first (:classes repainted))
+          op (first (:ops cls))]
+      (should-not (:incomplete cls))
+      (should-be-nil (:errors cls))
+      (should-be-nil (:invalid cls))
+      (should-not (:incomplete op))
+      (should-be-nil (:errors op))
+      (should-be-nil (:invalid op)))
     ;; Incomplete mutation measurements return nil from config/mutation-ratio
     (should-be-nil ((requiring-resolve 'uml-viewer.domain.config/mutation-ratio)
                     {:killed 8 :survived 0 :incomplete true})))
