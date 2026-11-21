@@ -81,12 +81,13 @@
                         (:classes painted))
         measured-crap? (some #(some? (get-in % [:crap :mu])) members)
         measured-mutation? (some #(some (fn [k] (some? (get % k)))
-                                       [:killed :survived :uncovered :sites])
+                                       [:killed :survived :uncovered :sites :invalid :errors :incomplete])
                                  (concat members (mapcat :ops members)))]
     ;; Core hierarchy rollups penalize absent measurements; the browser labels them unknown.
     (cond-> c
       (not measured-crap?) (assoc :crap nil)
-      (not measured-mutation?) (assoc :killed nil :survived nil :uncovered nil :sites nil))))
+      (not measured-mutation?) (assoc :killed nil :survived nil :uncovered nil :sites nil
+                                      :invalid nil :errors nil :incomplete false))))
 
 (defn- class-dto [c]
   (let [c (reduce (fn [c key]

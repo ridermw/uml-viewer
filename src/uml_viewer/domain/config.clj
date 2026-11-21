@@ -71,10 +71,10 @@
 
 (defn mutation-ratio
   "Killed / (killed + survived + missing-function gap).
-  Nil when there is no mutant data and no gap.
+  Nil when there is no mutant data and no gap, or when the run is `:incomplete`.
   `:mut-gap` counts unscored functions as failed trials."
   [m]
-  (when (map? m)
+  (when (and (map? m) (not (:incomplete m)))
     (let [k (:killed m)
           s (:survived m)
           gap (:mut-gap m)]

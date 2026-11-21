@@ -182,25 +182,35 @@
   #"(?m)(?:^|[;{}])\s*(?:\[[^\]]*\]\s*)*(?:(?:public|internal|private|protected|abstract|sealed|static|partial|readonly|ref|unsafe|new|file)\s+)*(class|struct|interface|enum|record(?:\s+(?:class|struct))?)\s+([A-Za-z_]\w*)(?:\s*<[^>]+>)?(?:\s*\([^)]*\))?(?:\s*:\s*([^{;]+?))?(?:\s+where\s+[^{;]+)?\s*(\{|;)")
 
 (def ^:private method-pat
-  #"(?m)^\s*(?:(?:public|internal|private|protected|static|virtual|override|abstract|sealed|async|extern|unsafe|new|partial|readonly)\s+)*(?:[A-Za-z_][\w.<>,\[\]?\s]*?)\s+([A-Za-z_]\w*)(?:\s*<[^>]+>)?\s*\([^;{}]*\)(?:\s+where\s+[^{;]+)?\s*(\{|=>)")
+  #"(?m)(?:^|[;{}])\s*(?:(?:public|internal|private|protected|static|virtual|override|abstract|sealed|async|extern|unsafe|new|partial|readonly)\s+)*(?:[A-Za-z_][\w.<>,\[\]?\s]*?)\s+([A-Za-z_]\w*)(?:\s*<[^>]+>)?\s*\([^;{}]*\)(?:\s+where\s+[^{;]+)?\s*(\{|=>)")
 
 (def ^:private skip-method-names
   #{"if" "for" "foreach" "while" "switch" "catch" "using" "lock" "fixed" "return" "throw" "new" "where" "get" "set" "init" "add" "remove"})
 
 (defn- parse-methods [^String masked body-start body-end type-name rel-file]
-  (let [body (subs masked body-start (min body-end (count masked)))
+  ;; Scan only direct member declarations inside the type body, skipping over
+  ;; each method's `{ ... }` block so local functions never become class ops.
+  (let [limit (min body-end (count masked))
+        body (subs masked body-start limit)
         m (re-matcher method-pat body)
-        ops (atom [])]
-    (while (.find m)
+        ops (atom [])
+        cursor (atom 0)]
+    (while (.find m @cursor)
       (let [nm (.group m 1)
             tok (.group m 2)
-            abs-pos (+ body-start (.start m))]
+            name-abs (+ body-start (.start m 1))
+            end-rel (.end m)
+            next-pos (if (= tok "{")
+                       (let [close-abs (matching-brace masked (+ body-start (dec end-rel)))]
+                         (min (count body) (max end-rel (- (inc close-abs) body-start))))
+                       end-rel)]
         (when (and nm
                    (not= nm type-name)
                    (not (contains? skip-method-names nm))
                    (contains? #{"{" "=>"} tok))
-          (let [ln (line-at masked (+ body-start (.start m 1)))]
-            (swap! ops conj {:name nm :text nm :file rel-file :line ln})))))
+          (let [ln (line-at masked name-abs)]
+            (swap! ops conj {:name nm :text nm :file rel-file :line ln})))
+        (reset! cursor next-pos)))
     @ops))
 
 (defn- strip-balanced-generics [^String s]
@@ -329,14 +339,29 @@
                :kind (:kind first-t)}
         stereotype (assoc :stereotype stereotype)))))
 
+(defn- enclosing-ns-prefixes [ns-prefix]
+  (when-not (str/blank? ns-prefix)
+    (let [parts (str/split ns-prefix #"\.")]
+      (for [k (range (count parts) 0 -1)]
+        (str/join "." (take k parts))))))
+
 (defn- resolve-type-ref [ref-name owner by-ns by-short]
-  (or (get by-ns ref-name)
-      (when-not (str/blank? (:ns-prefix owner))
-        (get by-ns (str (:ns-prefix owner) "." ref-name)))
-      (some #(get by-ns (str % "." ref-name)) (:usings owner))
-      (let [matches (get by-short ref-name)]
-        (when (= 1 (count matches))
-          (first matches)))))
+  (let [ref-name (str/replace (str ref-name) #"^global::" "")]
+    (if (str/includes? ref-name ".")
+      ;; Qualified reference: try exact, then prefix under enclosing namespaces, then dotted prefixes
+      (or (get by-ns ref-name)
+          (some #(get by-ns (str % "." ref-name)) (enclosing-ns-prefixes (:ns-prefix owner)))
+          (let [parts (str/split ref-name #"\.")]
+            (some (fn [k]
+                    (get by-ns (str/join "." (take k parts))))
+                  (range (dec (count parts)) 0 -1))))
+      ;; Unqualified name: enclosing namespaces (innermost first), then usings, then global, then unique short name
+      (or (some #(get by-ns (str % "." ref-name)) (enclosing-ns-prefixes (:ns-prefix owner)))
+          (some #(get by-ns (str % "." ref-name)) (:usings owner))
+          (get by-ns ref-name)
+          (let [matches (get by-short ref-name)]
+            (when (= 1 (count matches))
+              (first matches)))))))
 
 (defn scan-csharp [root opts]
   (let [root-file (.getCanonicalFile (io/file root))
@@ -369,7 +394,7 @@
                                                                :inheritance)})))
                                                 (:bases c))
                                base-ids (set (map :to base-edges))
-                               tokens (set (re-seq #"\b[A-Z][A-Za-z0-9_]*\b" (or (:body c) "")))
+                               tokens (set (re-seq #"\b(?:global::)?[A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)*\b" (or (:body c) "")))
                                dep-edges (keep (fn [tok]
                                                  (when-let [target (resolve-type-ref tok c by-ns by-short)]
                                                    (when (and (not= (:id target) from)

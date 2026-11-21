@@ -5,7 +5,7 @@
             [uml-viewer.graph :as graph])
   (:import [java.util.regex Pattern]))
 
-(def ^:private exts [".ts" ".tsx" ".js" ".jsx" ".mjs" ".cjs"])
+(def ^:private exts [".ts" ".tsx" ".mts" ".cts" ".js" ".jsx" ".mjs" ".cjs"])
 
 (defn- excluded-name? [name]
   (or (str/ends-with? name ".d.ts")
@@ -412,10 +412,16 @@
   (when (and spec (str/starts-with? spec "."))
     (let [base (io/file (.getParentFile (.getCanonicalFile (io/file file))) spec)
           base-path (.getPath base)
-          ;; NodeNext ESM style: "./config.js" names the compiled form of
-          ;; config.ts, so try the spec's .js suffix replaced by each ext.
-          swapped (when (re-find #"\.[cm]?js$" base-path)
-                    (map #(io/file (str/replace base-path #"\.[cm]?js$" %)) exts))
+          ;; NodeNext ESM style: "./config.js" -> config.ts/.tsx/...,
+          ;; "./config.mjs" -> config.mts, "./config.cjs" -> config.cts.
+          swapped (cond
+                    (str/ends-with? base-path ".mjs")
+                    (map #(io/file (str (subs base-path 0 (- (count base-path) 4)) %)) [".mts" ".mjs"])
+                    (str/ends-with? base-path ".cjs")
+                    (map #(io/file (str (subs base-path 0 (- (count base-path) 4)) %)) [".cts" ".cjs"])
+                    (str/ends-with? base-path ".js")
+                    (map #(io/file (str (subs base-path 0 (- (count base-path) 3)) %)) exts)
+                    :else nil)
           candidates (concat [base]
                              swapped
                              (map #(io/file (str base-path %)) exts)

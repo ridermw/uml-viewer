@@ -128,6 +128,46 @@
         (swap! ops conj {:name nm :text nm :file rel-file :line ln})))
     @ops))
 
+(defn- parse-arg-token
+  "Extract the next argument from `s`, preserving spaces inside single/double quotes."
+  [^String s]
+  (let [t (str/triml s)]
+    (cond
+      (str/blank? t) [nil ""]
+      (str/starts-with? t "\"")
+      (when-let [[m inner] (re-find #"^\"([^\"]+)\"" t)]
+        [inner (subs t (count m))])
+      (str/starts-with? t "'")
+      (when-let [[m inner] (re-find #"^'([^']+)'" t)]
+        [inner (subs t (count m))])
+      :else
+      (when-let [[m tok] (re-find #"^([^\s;,|)\r\n]+)" t)]
+        [tok (subs t (count m))]))))
+
+(defn- static-ps-target? [target]
+  (when (and target (not (str/blank? target)))
+    ;; Allow $PSScriptRoot prefix while rejecting other runtime variables.
+    (let [without-root (str/replace target #"(?i)\$PSScriptRoot[/\\]?" "")]
+      (not (str/includes? without-root "$")))))
+
+(defn- parse-import-module-target [^String tail]
+  ;; Walk arguments skipping switches (-Force, -Global, -DisableNameChecking, etc.)
+  ;; and picking the value after -Name or the first positional argument.
+  (let [value-params #{"-minimumversion" "-maximumversion" "-requiredversion" "-prefix"
+                       "-scope" "-alias" "-cmdlet" "-function" "-variable" "-argumentlist" "-ascustomobject"}]
+    (loop [rem tail]
+      (let [[tok rest-s] (parse-arg-token rem)]
+        (cond
+          (nil? tok) nil
+          (= (str/lower-case tok) "-name")
+          (first (parse-arg-token rest-s))
+          (contains? value-params (str/lower-case tok))
+          (let [[_ after-val] (parse-arg-token rest-s)]
+            (recur after-val))
+          (str/starts-with? tok "-")
+          (recur rest-s)
+          :else tok)))))
+
 (defn- extract-static-refs [^String raw ^String masked]
   ;; Match command tokens strictly in the masked text (never inside comments or strings),
   ;; then read the path/module argument from the corresponding raw line offset.
@@ -137,23 +177,26 @@
         ;; Dot-source: `.` must appear as an unmasked command token at line start
         (let [m (re-matcher #"(?i)^\s*(\.)(?=[ \t])" mline)]
           (when (.find m)
-            (let [tail (str/triml (subs line (min (.end m 1) (count line))))]
-              (when-let [[_ path] (re-find #"(?i)^[\"']?([^\"'\s;]+(?:\.ps1|\.psm1))[\"']?" tail)]
+            (let [tail (subs line (min (.end m 1) (count line)))
+                  [path _] (parse-arg-token tail)]
+              (when (and path
+                         (re-find #"(?i)\.(?:ps1|psm1)$" path)
+                         (static-ps-target? path))
                 (swap! refs conj {:kind :dot :target path})))))
-        ;; Import-Module: command token must be unmasked
-        (let [m (re-matcher #"(?i)\b(Import-Module(?:\s+-Name)?)(?=[ \t])" mline)]
+        ;; Import-Module: require a true command boundary (never Test-Import-Module)
+        (let [m (re-matcher #"(?i)(?:^|[\s;|&(])(Import-Module)(?=[ \t])" mline)]
           (while (.find m)
-            (let [tail (str/triml (subs line (min (.end m 1) (count line))))]
-              (when-let [[_ target] (re-find #"^[\"']?([^\"'\s;,\)]+)[\"']?" tail)]
-                (when-not (str/includes? target "$")
-                  (swap! refs conj {:kind :module :target target}))))))
+            (let [tail (subs line (min (.end m 1) (count line)))
+                  target (parse-import-module-target tail)]
+              (when (static-ps-target? target)
+                (swap! refs conj {:kind :module :target target})))))
         ;; using module: command tokens must be unmasked
         (let [m (re-matcher #"(?i)^\s*(using\s+module)(?=[ \t])" mline)]
           (when (.find m)
-            (let [tail (str/triml (subs line (min (.end m 1) (count line))))]
-              (when-let [[_ target] (re-find #"^[\"']?([^\"'\s;]+)[\"']?" tail)]
-                (when-not (str/includes? target "$")
-                  (swap! refs conj {:kind :module :target target}))))))
+            (let [tail (subs line (min (.end m 1) (count line)))
+                  [target _] (parse-arg-token tail)]
+              (when (static-ps-target? target)
+                (swap! refs conj {:kind :module :target target})))))
         ;; #Requires -Modules: preserved verbatim in masked text
         (when-let [[_ mods] (re-find #"(?i)^\s*#Requires\s+-Modules\s+(.+)$" mline)]
           (doseq [mod (str/split mods #",")]
@@ -170,13 +213,21 @@
       (let [cand (.getCanonicalFile (io/file (.getParentFile source-file) cleaned))]
         (get path->id (.getPath cand))))))
 
+(defn- explicit-path? [target]
+  (or (str/includes? target "/")
+      (str/includes? target "\\")
+      (str/starts-with? target ".")
+      (re-find #"(?i)\.(?:ps1|psm1|psd1)$" target)))
+
 (defn- resolve-module [^File source-file target path->id by-stem]
   (let [cleaned (str/replace target #"\\" "/")]
-    (or (resolve-dot source-file cleaned path->id)
-        (let [stem (str/lower-case (str/replace (or (graph/file-base cleaned) cleaned) #"(?i)\.(?:psm1|psd1|ps1)$" ""))
-              matches (get by-stem stem)]
-          (when (= 1 (count matches))
-            (first matches))))))
+    (if (explicit-path? cleaned)
+      ;; Explicit paths must resolve to that path — never fall back to an unrelated stem match.
+      (resolve-dot source-file cleaned path->id)
+      (let [stem (str/lower-case cleaned)
+            matches (get by-stem stem)]
+        (when (= 1 (count matches))
+          (first matches))))))
 
 (defn scan-powershell [root opts]
   (let [root-file (.getCanonicalFile (io/file root))
@@ -215,8 +266,7 @@
                                           (resolve-module (:raw-file n) (:target r) path->id by-stem))
                                to (or resolved
                                       (when (and (not= :dot (:kind r))
-                                                 (not (str/includes? (:target r) "/"))
-                                                 (not (str/includes? (:target r) "\\")))
+                                                 (not (explicit-path? (:target r))))
                                         (let [fid (keyword (:target r))]
                                           (swap! foreign-atom assoc fid (graph/foreign-class fid))
                                           fid)))]

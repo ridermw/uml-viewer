@@ -61,4 +61,24 @@
             clean (get by-ns "Clean")]
         (should-not-contain "FakeFromString" by-ns)
         (should-not-contain "FakeFromComment" by-ns)
-        (should= 3 (:line (first (:ops clean))))))))
+        (should= 3 (:line (first (:ops clean)))))))
+
+  (it "handles quoted paths with spaces, Import-Module switches and $PSScriptRoot, command boundaries, and no path stem fallback"
+    (let [dir (temp-root)]
+      (spit-file dir "src/My Module.psm1" "function Get-M { return 1 }\n")
+      (spit-file dir "src/Other.psm1" "function Get-O { return 2 }\n")
+      (spit-file dir "src/Runner.ps1"
+                 (str ". \"$PSScriptRoot/My Module.psm1\"\n"
+                      "Import-Module -Force -Name Az.Accounts\n"
+                      "Import-Module \"$PSScriptRoot/Other.psm1\"\n"
+                      "Import-Module './Missing/Other.psm1'\n"
+                      "Test-Import-Module ShouldIgnore\n"))
+      (let [g (graph/scan ps-graph/impl dir {:prefix "" :project-root dir})
+            by-ns (into {} (map (juxt :ns identity) (:classes g)))
+            edges (set (map (juxt :from :to :kind) (:edges g)))]
+        (should-contain "Az.Accounts" by-ns)
+        (should-not-contain "-Force" by-ns)
+        (should-not-contain "ShouldIgnore" by-ns)
+        (should (contains? edges [:Runner (keyword "My Module") :dependency]))
+        (should (contains? edges [:Runner :Other :dependency]))
+        (should (contains? edges [:Runner :Az.Accounts :dependency]))))))

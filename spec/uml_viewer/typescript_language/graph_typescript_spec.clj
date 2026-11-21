@@ -113,6 +113,16 @@
             edges (set (map (juxt :from :to :kind) (:edges g)))]
         (should (contains? edges [:book :model :dependency])))))
 
+  (it "resolves NodeNext .mjs import to its .mts source"
+    (let [dir (temp-root)]
+      (spit-file dir "src/model.mts" "export function wordCount(body: string): number { return 0; }\n")
+      (spit-file dir "src/book.mts"
+                 (str "import { wordCount } from \"./model.mjs\";\n"
+                      "export function loadBook(): number { return wordCount(\"\"); }\n"))
+      (let [g (graph/scan (graph/lookup :typescript) (io/file dir "src") {:prefix "bookwriter"})
+            edges (set (map (juxt :from :to :kind) (:edges g)))]
+        (should (contains? edges [:book :model :dependency])))))
+
   (it "nests a file under its directory"
     (let [dir (temp-root)]
       (spit-file dir "src/editor/view.ts" "export function show(): void {}\n")

@@ -134,4 +134,24 @@
                                                 :forms [{:id "defn/Run" :hash "same" :killed 3 :survived 0 :uncovered 0 :sites 3}]}}}
           painted (overlay/apply-metrics doc metrics)
           board (first (:classes painted))]
-      (should= 5 (:killed board)))))
+      (should= 5 (:killed board)))
+    ;; Incomplete mutation measurements return nil from config/mutation-ratio
+    (should-be-nil ((requiring-resolve 'uml-viewer.domain.config/mutation-ratio)
+                    {:killed 8 :survived 0 :incomplete true})))
+
+  (it "recognizes same-line methods, excludes local functions, resolves enclosing namespace first, and preserves qualified refs"
+    (let [dir (temp-root)]
+      (spit-file dir "src/Global.cs" "public class Base {}\n")
+      (spit-file dir "src/DemoBase.cs" "namespace Demo; public class Base {}\n")
+      (spit-file dir "src/Widgets.cs" "namespace A { public class Widget {} }\nnamespace B { public class Widget {} }\n")
+      (spit-file dir "src/Worker.cs"
+                 (str "namespace Demo;\n"
+                      "public class Worker : Base { private A.Widget w; public int Go() { int Local() { return 1; } return Local(); } }\n"))
+      (let [g (graph/scan cs-graph/impl dir {:prefix "" :project-root dir})
+            by-ns (into {} (map (juxt :ns identity) (:classes g)))
+            edges (set (map (juxt :from :to :kind) (:edges g)))
+            worker (get by-ns "Demo.Worker")]
+        (should= ["Go"] (mapv :name (:ops worker)))
+        (should (contains? edges [:Demo.Worker :Demo.Base :inheritance]))
+        (should-not (contains? edges [:Demo.Worker :Base :inheritance]))
+        (should (contains? edges [:Demo.Worker :A.Widget :dependency]))))))
