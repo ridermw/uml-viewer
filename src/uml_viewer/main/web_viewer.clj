@@ -1,6 +1,8 @@
 (ns uml-viewer.main.web-viewer
   (:require [clojure.string :as str]
             [uml-viewer.clojure-language.source-clojure]
+            [uml-viewer.csharp-language.source-csharp]
+            [uml-viewer.powershell-language.source-powershell]
             [uml-viewer.python-language.source-python]
             [uml-viewer.rust-language.source-rust]
             [uml-viewer.typescript-language.source-typescript]

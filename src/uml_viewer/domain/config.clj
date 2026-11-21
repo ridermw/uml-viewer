@@ -71,10 +71,10 @@
 
 (defn mutation-ratio
   "Killed / (killed + survived + missing-function gap).
-  Nil when there is no mutant data and no gap.
+  Nil when there is no mutant data and no gap, or when the run is `:incomplete`.
   `:mut-gap` counts unscored functions as failed trials."
   [m]
-  (when (map? m)
+  (when (and (map? m) (not (:incomplete m)))
     (let [k (:killed m)
           s (:survived m)
           gap (:mut-gap m)]
@@ -219,7 +219,7 @@
     (function-weight c)))
 
 (defn pool-mutants
-  "Summed killed, survived, and uncovered across modules.
+  "Summed killed, survived, uncovered, invalid, errors, and incomplete across modules.
   A module with no mutant data adds `:mut-gap` failed trials, one per
   function. Counts on the map stay the measured totals."
   [classes]
@@ -228,9 +228,15 @@
         k (reduce + 0 (map #(or (:killed %) 0) measured))
         s (reduce + 0 (map #(or (:survived %) 0) measured))
         uncovered (keep :uncovered classes)
+        invalid (keep :invalid classes)
+        errors (keep :errors classes)
+        incomplete? (boolean (some :incomplete classes))
         gap (reduce + 0 (map mutant-gap classes))]
-    (when (or (seq measured) (pos? gap))
+    (when (or (seq measured) (pos? gap) (seq invalid) (seq errors) incomplete?)
       (cond-> {}
         (seq measured) (assoc :killed (long k) :survived (long s))
         (seq uncovered) (assoc :uncovered (long (reduce + uncovered)))
+        (seq invalid) (assoc :invalid (long (reduce + invalid)))
+        (seq errors) (assoc :errors (long (reduce + errors)))
+        incomplete? (assoc :incomplete true)
         (pos? gap) (assoc :mut-gap (long gap))))))

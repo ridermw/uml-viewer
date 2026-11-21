@@ -22,7 +22,7 @@ export function Inspector({
     member,
     tab === "source",
   );
-  const mutation = mutationScore(node.killed, node.survived);
+  const mutation = mutationScore(node.killed, node.survived, node.incomplete);
   const relationships = snapshot.scene.edges.filter(
     (e) => e.from === node.id || e.to === node.id,
   );
@@ -75,8 +75,10 @@ export function Inspector({
             </div>
             <div className="metric-row">
               <span>Mutation score</span>
-              <strong>{percent(mutation)}</strong>
-              {mutation !== null && <progress max="1" value={mutation} />}
+              <strong>{node.incomplete ? "Incomplete" : percent(mutation)}</strong>
+              {!node.incomplete && mutation !== null && (
+                <progress max="1" value={mutation} />
+              )}
             </div>
             <div className="metric-row">
               <span>CRAP mean</span>

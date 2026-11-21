@@ -5,7 +5,7 @@
             [uml-viewer.graph :as graph])
   (:import [java.util.regex Pattern]))
 
-(def ^:private exts [".ts" ".tsx" ".js" ".jsx" ".mjs" ".cjs"])
+(def ^:private exts [".ts" ".tsx" ".mts" ".cts" ".js" ".jsx" ".mjs" ".cjs"])
 
 (defn- excluded-name? [name]
   (or (str/ends-with? name ".d.ts")
@@ -411,8 +411,20 @@
 (defn- resolve-project [file spec path->id]
   (when (and spec (str/starts-with? spec "."))
     (let [base (io/file (.getParentFile (.getCanonicalFile (io/file file))) spec)
+          base-path (.getPath base)
+          ;; NodeNext ESM style: "./config.js" -> config.ts/.tsx/...,
+          ;; "./config.mjs" -> config.mts, "./config.cjs" -> config.cts.
+          swapped (cond
+                    (str/ends-with? base-path ".mjs")
+                    (map #(io/file (str (subs base-path 0 (- (count base-path) 4)) %)) [".mts" ".mjs"])
+                    (str/ends-with? base-path ".cjs")
+                    (map #(io/file (str (subs base-path 0 (- (count base-path) 4)) %)) [".cts" ".cjs"])
+                    (str/ends-with? base-path ".js")
+                    (map #(io/file (str (subs base-path 0 (- (count base-path) 3)) %)) exts)
+                    :else nil)
           candidates (concat [base]
-                             (map #(io/file (str (.getPath base) %)) exts)
+                             swapped
+                             (map #(io/file (str base-path %)) exts)
                              (map #(io/file base (str "index" %)) exts))]
       (some (fn [c]
               (when (.isFile c)

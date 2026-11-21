@@ -135,10 +135,10 @@
     (:crap leaf)))
 
 (defn- own-mutants
-  "Mutation counts on this source file, or nil. Files do not inherit."
+  "Mutation counts and diagnostic/incomplete status on this source file, or nil."
   [leaf]
-  (let [m (select-keys (or leaf {}) [:killed :survived :uncovered])]
-    (when (or (:killed m) (:survived m))
+  (let [m (select-keys (or leaf {}) [:killed :survived :uncovered :invalid :errors :incomplete])]
+    (when (or (:killed m) (:survived m) (:invalid m) (:errors m) (:incomplete m))
       m)))
 
 (defn- with-leaf-identity [m leaf lv]

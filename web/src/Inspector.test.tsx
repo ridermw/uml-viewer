@@ -16,3 +16,17 @@ it("does not turn missing metrics into zero or a risk grade", () => {
   expect(screen.getByText("Unknown")).toBeVisible();
   expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
 });
+
+it("shows Incomplete instead of 100% when mutation run is incomplete", () => {
+  render(
+    <Inspector
+      node={{ ...catalog, killed: 8, survived: 0, incomplete: true }}
+      snapshot={library}
+      onSelect={vi.fn()}
+      onDrill={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("Incomplete")).toBeVisible();
+  expect(screen.queryByText("100%")).not.toBeInTheDocument();
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+});

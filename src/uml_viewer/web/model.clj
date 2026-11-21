@@ -10,7 +10,7 @@
   (:import [java.time Instant]
            [java.util UUID]))
 
-(def metric-keys [:crap :coverage :cc :killed :survived :uncovered :sites])
+(def metric-keys [:crap :coverage :cc :killed :survived :uncovered :sites :invalid :errors :incomplete])
 
 (defn wire [value]
   (cond
@@ -81,24 +81,27 @@
                         (:classes painted))
         measured-crap? (some #(some? (get-in % [:crap :mu])) members)
         measured-mutation? (some #(some (fn [k] (some? (get % k)))
-                                       [:killed :survived :uncovered :sites])
+                                       [:killed :survived :uncovered :sites :invalid :errors :incomplete])
                                  (concat members (mapcat :ops members)))]
     ;; Core hierarchy rollups penalize absent measurements; the browser labels them unknown.
     (cond-> c
       (not measured-crap?) (assoc :crap nil)
-      (not measured-mutation?) (assoc :killed nil :survived nil :uncovered nil :sites nil))))
+      (not measured-mutation?) (assoc :killed nil :survived nil :uncovered nil :sites nil
+                                      :invalid nil :errors nil :incomplete false))))
 
 (defn- class-dto [c]
   (let [c (reduce (fn [c key]
                     (if (some? (get c key)) c
                         (let [values (keep key (:ops c))]
                           (if (seq values) (assoc c key (reduce + values)) c))))
-                  c [:killed :survived :uncovered :sites])
+                  c [:killed :survived :uncovered :sites :invalid :errors])
+        incomplete? (boolean (or (:incomplete c) (some :incomplete (:ops c))))
         risk (config/crap-risk (:crap c))
-        score (executed-mutation-score c)]
+        score (when-not incomplete? (executed-mutation-score c))]
     (-> (metrics c)
         (assoc :package (:package c) :ns (:ns c) :file (:file c) :lang (:lang c)
                :shape (:shape c) :drill? (boolean (:drill? c))
+               :incomplete incomplete?
                :fields (mapv metrics (:fields c)) :ops (mapv metrics (:ops c))
                :lines (vec (:lines c))
                :in-ports (vec (:in-ports c)) :out-ports (vec (:out-ports c))

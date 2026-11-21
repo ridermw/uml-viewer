@@ -87,14 +87,16 @@
   (when impl
     (when-let [path (locate impl ident)]
       (let [src (slurp path)
-            named? (seq (str (:name ident)))]
-        (when (or (not named?) (extract impl src ident))
+            named? (seq (str (:name ident)))
+            explicit-line (:line ident)
+            resolved-line (when named? (or explicit-line (start-line impl src ident)))]
+        (when (or (not named?) explicit-line (extract impl src ident))
           {:title (if named?
-                    (str path ":" (or (start-line impl src ident) 1))
+                    (str path ":" (or resolved-line 1))
                     path)
            :file path
            :body src
-           :line (when named? (start-line impl src ident))
+           :line resolved-line
            :lang lang})))))
 
 (defn member-source

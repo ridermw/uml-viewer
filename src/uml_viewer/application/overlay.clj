@@ -82,16 +82,53 @@
       (str/starts-with? id "defn/") {:name (subs id 5) :private false}
       :else nil)))
 
+(defn- counted-sites
+  "Site total from the snapshot. Older files omit `:sites` and record
+  only killed, survived, and uncovered."
+  [form]
+  (or (:sites form)
+      (+ (or (:killed form) 0)
+         (or (:survived form) 0)
+         (or (:uncovered form) 0))))
+
+(defn- dedupe-forms [forms]
+  (let [seen (atom #{})]
+    (filterv (fn [form]
+               ;; Only deduplicate forms that carry declaration provenance (:file or :line);
+               ;; legacy forms without provenance keep their snapshot origin and are not collapsed.
+               (if (or (:file form) (:line form))
+                 (let [k [(:snapshot-ns form) (:file form) (:id form) (:line form) (:ordinal form) (:hash form)]]
+                   (if (contains? @seen k)
+                     false
+                     (do (swap! seen conj k) true)))
+                 true))
+             forms)))
+
 (defn- mutate-by-fn [snapshot]
-  (into {}
-        (keep (fn [form]
-                (when-let [n (form-name (:id form))]
-                  [(:name n) (assoc n
-                               :killed (:killed form)
-                               :survived (:survived form)
-                               :uncovered (:uncovered form)
-                               :sites (:sites form))]))
-              (:forms snapshot))))
+  (let [forms (dedupe-forms (or (:forms snapshot) []))
+        snap-incomplete? (boolean (:incomplete snapshot))]
+    (reduce (fn [acc form]
+              (if-let [n (form-name (:id form))]
+                (let [nm (:name n)
+                      prev (get acc nm)
+                      killed (+ (or (:killed prev) 0) (or (:killed form) 0))
+                      survived (+ (or (:survived prev) 0) (or (:survived form) 0))
+                      uncovered (+ (or (:uncovered prev) 0) (or (:uncovered form) 0))
+                      sites (+ (or (:sites prev) 0) (counted-sites form))
+                      invalid (+ (or (:invalid prev) 0) (or (:invalid form) 0))
+                      errors (+ (or (:errors prev) 0) (or (:errors form) 0))
+                      incomplete (boolean (or (:incomplete prev) (:incomplete form) snap-incomplete?))
+                      priv (boolean (or (:private prev) (:private n)))]
+                  (assoc acc nm
+                         (cond-> {:name nm :private priv
+                                  :killed killed :survived survived
+                                  :uncovered uncovered :sites sites}
+                           (pos? invalid) (assoc :invalid invalid)
+                           (pos? errors) (assoc :errors errors)
+                           incomplete (assoc :incomplete true))))
+                acc))
+            {}
+            forms)))
 
 (defn class-namespace
   "Snapshot namespace for a class: authored or generated `:ns`."
@@ -125,18 +162,21 @@
 
 (defn- claim-rank
   "Sort key when `c` should display snapshot `snap`, or nil.
-  Exact `:ns` wins, then the class id (`bookwriter.model` owns `model`),
-  then a dotted child (`pdf` owns `pdf.Layout`). The policy prefix, which
-  is the Cargo package name, belongs to the Rust crate root."
+  Exact `:ns` wins, then longest canonical `:ns` ancestor (`Demo.Board` owns
+  `Demo.Board.Inner`), then the class id (`bookwriter.model` owns `model`),
+  then a dotted child of `:id` (`pdf` owns `pdf.Layout`). The policy prefix,
+  which is the Cargo package name, belongs to the Rust crate root."
   [c prefix rust-root snap]
   (let [ns-name (class-namespace c)
         id-name (some-> (:id c) name)]
     (cond
       (= ns-name snap) [0 0]
-      (= id-name snap) [1 0]
+      (and ns-name (str/starts-with? snap (str ns-name ".")))
+      [1 (- (count ns-name))]
+      (= id-name snap) [2 0]
       (and id-name (str/starts-with? snap (str id-name ".")))
-      [2 (- (count id-name))]
-      (and rust-root (= c rust-root) prefix (= snap prefix)) [3 0]
+      [3 (- (count id-name))]
+      (and rust-root (= c rust-root) prefix (= snap prefix)) [4 0]
       :else nil)))
 
 (defn- snapshot-owner
@@ -170,7 +210,12 @@
 (defn- merge-mutate [snapshots]
   (let [snaps (vec (keep identity snapshots))]
     (when (seq snaps)
-      {:forms (vec (mapcat #(or (:forms %) []) snaps))})))
+      (cond-> {:forms (vec (mapcat (fn [s]
+                                     (let [sns (:namespace s)]
+                                       (map #(cond-> % sns (assoc :snapshot-ns sns))
+                                            (or (:forms s) []))))
+                                   snaps))}
+        (some :incomplete snaps) (assoc :incomplete true)))))
 
 (defn- pct->ratio [cov]
   (when (number? cov)
@@ -179,28 +224,36 @@
 (defn- class-crap [scores]
   (config/summarize-scores scores))
 
-(defn- counted-sites
-  "Site total from the snapshot. Older files omit `:sites` and record
-  only killed, survived, and uncovered."
-  [form]
-  (or (:sites form)
-      (+ (or (:killed form) 0)
-         (or (:survived form) 0)
-         (or (:uncovered form) 0))))
+(defn- aggregate-crap-fns [fns]
+  (when (seq fns)
+    (if (= 1 (count fns))
+      (first fns)
+      (let [craps (keep :crap fns)
+            ccs (keep :complexity fns)
+            covs (keep :coverage fns)]
+        (cond-> (first fns)
+          (seq ccs) (assoc :complexity (apply max ccs))
+          (seq craps) (assoc :crap (apply max craps))
+          (seq covs) (assoc :coverage (/ (reduce + covs) (count covs))))))))
 
 (defn- overlay-op [op crap-fn mut-fn]
   (cond-> (assoc op :text (or (:text op) (:name op)))
     crap-fn (assoc :cc (:complexity crap-fn)
                    :crap (:crap crap-fn)
                    :coverage (pct->ratio (:coverage crap-fn)))
-    mut-fn (assoc :killed (or (:killed mut-fn) 0)
-                  :survived (or (:survived mut-fn) 0)
-                  :uncovered (or (:uncovered mut-fn) 0)
-                  :sites (counted-sites mut-fn))
+    mut-fn (-> (dissoc :invalid :errors :incomplete)
+               (assoc :killed (or (:killed mut-fn) 0)
+                      :survived (or (:survived mut-fn) 0)
+                      :uncovered (or (:uncovered mut-fn) 0)
+                      :sites (counted-sites mut-fn)))
+    (and mut-fn (pos? (or (:invalid mut-fn) 0))) (assoc :invalid (:invalid mut-fn))
+    (and mut-fn (pos? (or (:errors mut-fn) 0))) (assoc :errors (:errors mut-fn))
+    (and mut-fn (:incomplete mut-fn)) (assoc :incomplete true)
     (or (:private op) (:private mut-fn)) (assoc :private true)))
 
 (defn- ops-for-class [c crap-fns mut-fns]
-  (let [by-name (into {} (map (juxt :name identity) crap-fns))
+  (let [by-name (into {} (map (fn [[nm fs]] [nm (aggregate-crap-fns fs)])
+                              (group-by :name crap-fns)))
         names (distinct (concat (map :name (:ops c))
                                 (map :name crap-fns)
                                 (keys mut-fns)))]
@@ -216,21 +269,29 @@
   ([c crap-by-ns mutate-by-ns owned]
    (let [nss (if (nil? owned) [(class-namespace c)] owned)
          crap-fns (vec (mapcat #(or (get crap-by-ns %) []) nss))
-         mut-fns (mutate-by-fn (merge-mutate (map #(get mutate-by-ns %) nss)))
+         merged-mut (merge-mutate (map #(get mutate-by-ns %) nss))
+         mut-fns (mutate-by-fn merged-mut)
          scores (keep :crap crap-fns)
          coverages (keep :coverage crap-fns)
          ops (ops-for-class c crap-fns mut-fns)
          killed (apply + 0 (keep :killed (vals mut-fns)))
          survived (apply + 0 (keep :survived (vals mut-fns)))
          uncovered (apply + 0 (keep :uncovered (vals mut-fns)))
-         sites (apply + 0 (map counted-sites (vals mut-fns)))]
+         sites (apply + 0 (map counted-sites (vals mut-fns)))
+         invalid (apply + 0 (keep :invalid (vals mut-fns)))
+         errors (apply + 0 (keep :errors (vals mut-fns)))
+         incomplete (boolean (or (:incomplete merged-mut) (some :incomplete (vals mut-fns))))]
     (cond-> c
       (seq scores) (assoc :crap (class-crap scores)
                           :cc (apply + (map :complexity crap-fns)))
       (seq coverages) (assoc :coverage (pct->ratio
                                          (/ (reduce + coverages) (count coverages))))
+      merged-mut (dissoc :invalid :errors :incomplete)
       (seq mut-fns) (assoc :killed killed :survived survived :uncovered uncovered
                            :sites sites)
+      (pos? invalid) (assoc :invalid invalid)
+      (pos? errors) (assoc :errors errors)
+      incomplete (assoc :incomplete true)
       (seq ops) (assoc :ops ops)))))
 
 (defn- snapshot-names [metrics]

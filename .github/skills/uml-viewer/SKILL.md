@@ -1,6 +1,6 @@
 ---
 name: uml-viewer
-description: Use when drawing or viewing a project's architecture as a UML class diagram, writing a .policy.edn or generating uml-viewer IR, checking dependency direction or Clean Architecture layering, installing get-uml-viewer or ./uml in a project, or working with the uml-viewer Copilot CLI companion and its .uml-viewer mailbox.
+description: Use when drawing or viewing a project's architecture as a UML class diagram, writing a .policy.edn or generating uml-viewer IR (Clojure, TypeScript/JavaScript, Rust, Python, C#, or PowerShell), checking dependency direction or Clean Architecture layering, installing get-uml-viewer or ./uml in a project, or working with the uml-viewer Copilot CLI companion and its .uml-viewer mailbox.
 ---
 
 # uml-viewer

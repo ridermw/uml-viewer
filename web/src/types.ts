@@ -21,6 +21,9 @@ export interface MetricValues {
   survived: number | null;
   uncovered: number | null;
   sites: number | null;
+  invalid?: number | null;
+  errors?: number | null;
+  incomplete?: boolean | null;
 }
 export interface Member extends MetricValues {
   text: string;

@@ -6,7 +6,9 @@ export function percent(value: number | null): string {
 export function mutationScore(
   killed: number | null,
   survived: number | null,
+  incomplete?: boolean | null,
 ): number | null {
+  if (incomplete) return null;
   return killed === null || survived === null || killed + survived === 0
     ? null
     : killed / (killed + survived);
@@ -24,6 +26,7 @@ export function metricBand(c: ClassNode, mode: MetricMode): Band {
 }
 export function metricLabel(c: ClassNode, mode: MetricMode): string {
   if (mode === "crap") return c.crap?.mu?.toFixed(1) ?? "N/A";
+  if (mode === "mutation" && c.incomplete) return "Incomplete";
   return percent(
     mode === "coverage" ? c.coverage : mutationScore(c.killed, c.survived),
   );

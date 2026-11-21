@@ -25,9 +25,11 @@
                  (throw (ex-info (str "no LanguageGraph for " lang) {:lang lang})))]
     (graph/scan impl
                 (or (:root source) (:src source) (:src policy) "src")
-                {:prefix (or (:prefix policy) "uml-viewer")
-                 :ns-prefix (or (:prefix source) (:prefix policy) "uml-viewer")
-                 :lang lang})))
+                (cond-> {:prefix (or (:prefix policy) "uml-viewer")
+                         :ns-prefix (or (:prefix source) (:prefix policy) "uml-viewer")
+                         :lang lang}
+                  (or (:project-root source) (:project-root policy))
+                  (assoc :project-root (or (:project-root source) (:project-root policy)))))))
 
 (defn scan-policy
   "Scan `policy`. `:sources` merges one scanner per entry.
@@ -37,7 +39,8 @@
     (graph/merge-scans (mapv #(scan-source policy %) (:sources policy)))
     (graph/scan graph-impl
                 (or (:src policy) "src")
-                {:prefix (or (:prefix policy) "uml-viewer")})))
+                (cond-> {:prefix (or (:prefix policy) "uml-viewer")}
+                  (:project-root policy) (assoc :project-root (:project-root policy))))))
 
 (defn document
   "Scan source with `graph-impl` and apply `policy`. Returns the IR document.
