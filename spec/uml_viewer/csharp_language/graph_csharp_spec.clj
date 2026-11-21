@@ -145,13 +145,13 @@
       (spit-file dir "src/DemoBase.cs" "namespace Demo; public class Base {}\n")
       (spit-file dir "src/Widgets.cs" "namespace A { public class Widget {} }\nnamespace B { public class Widget {} }\n")
       (spit-file dir "src/Worker.cs"
-                 (str "namespace Demo;\n"
-                      "public class Worker : Base { private A.Widget w; public int Go() { int Local() { return 1; } return Local(); } }\n"))
+                 (str "using System; namespace Demo;\n"
+                      "public class Worker : Base { private A.Widget w; public int Value { get { int PropLocal() { return 1; } return PropLocal(); } } [Obsolete] public int Go() { int Local() { return 1; } return Local(); } public int Next() { return 2; } }\n"))
       (let [g (graph/scan cs-graph/impl dir {:prefix "" :project-root dir})
             by-ns (into {} (map (juxt :ns identity) (:classes g)))
             edges (set (map (juxt :from :to :kind) (:edges g)))
             worker (get by-ns "Demo.Worker")]
-        (should= ["Go"] (mapv :name (:ops worker)))
+        (should= ["Go" "Next"] (mapv :name (:ops worker)))
         (should (contains? edges [:Demo.Worker :Demo.Base :inheritance]))
         (should-not (contains? edges [:Demo.Worker :Base :inheritance]))
         (should (contains? edges [:Demo.Worker :A.Widget :dependency]))))))

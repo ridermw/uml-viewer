@@ -176,41 +176,63 @@
        vec))
 
 (defn- extract-file-namespace [^String masked]
-  (second (re-find #"(?m)^\s*namespace\s+([A-Za-z_][\w.]*)\s*;" masked)))
+  (second (re-find #"(?m)(?:^|;)\s*namespace\s+([A-Za-z_][\w.]*)\s*;" masked)))
 
 (def ^:private type-pat
   #"(?m)(?:^|[;{}])\s*(?:\[[^\]]*\]\s*)*(?:(?:public|internal|private|protected|abstract|sealed|static|partial|readonly|ref|unsafe|new|file)\s+)*(class|struct|interface|enum|record(?:\s+(?:class|struct))?)\s+([A-Za-z_]\w*)(?:\s*<[^>]+>)?(?:\s*\([^)]*\))?(?:\s*:\s*([^{;]+?))?(?:\s+where\s+[^{;]+)?\s*(\{|;)")
 
 (def ^:private method-pat
-  #"(?m)(?:^|[;{}])\s*(?:(?:public|internal|private|protected|static|virtual|override|abstract|sealed|async|extern|unsafe|new|partial|readonly)\s+)*(?:[A-Za-z_][\w.<>,\[\]?\s]*?)\s+([A-Za-z_]\w*)(?:\s*<[^>]+>)?\s*\([^;{}]*\)(?:\s+where\s+[^{;]+)?\s*(\{|=>)")
+  #"(?m)(?:^|[;{}])\s*(?:\[[^\]]*\]\s*)*(?:(?:public|internal|private|protected|static|virtual|override|abstract|sealed|async|extern|unsafe|new|partial|readonly)\s+)*(?:[A-Za-z_][\w.<>,\[\]?\s]*?)\s+([A-Za-z_]\w*)(?:\s*<[^>]+>)?\s*\([^;{}]*\)(?:\s+where\s+[^{;]+)?\s*(\{|=>)")
 
 (def ^:private skip-method-names
   #{"if" "for" "foreach" "while" "switch" "catch" "using" "lock" "fixed" "return" "throw" "new" "where" "get" "set" "init" "add" "remove"})
 
+(defn- mask-nested-blocks
+  "Mask characters inside brace-delimited member blocks (depth >= 1) with spaces
+  while preserving newlines and depth-0 delimiters (`{` and `}`), so only direct
+  type members remain visible for declaration scanning."
+  ^String [^String body]
+  (let [n (count body)
+        sb (StringBuilder. n)]
+    (loop [i 0 depth 0]
+      (if (>= i n)
+        (.toString sb)
+        (let [c (.charAt body i)]
+          (cond
+            (= c \{)
+            (do (.append sb (if (zero? depth) \{ \space))
+                (recur (inc i) (inc depth)))
+
+            (= c \})
+            (let [next-depth (max 0 (dec depth))]
+              (.append sb (if (zero? next-depth) \} \space))
+              (recur (inc i) next-depth))
+
+            (pos? depth)
+            (do (.append sb (if (= c \newline) \newline \space))
+                (recur (inc i) depth))
+
+            :else
+            (do (.append sb c)
+                (recur (inc i) depth))))))))
+
 (defn- parse-methods [^String masked body-start body-end type-name rel-file]
-  ;; Scan only direct member declarations inside the type body, skipping over
-  ;; each method's `{ ... }` block so local functions never become class ops.
+  ;; Mask all nested `{ ... }` bodies (methods, property accessors, events, nested types)
+  ;; so only direct type members are scanned and adjacent same-line methods reuse `}`.
   (let [limit (min body-end (count masked))
-        body (subs masked body-start limit)
-        m (re-matcher method-pat body)
-        ops (atom [])
-        cursor (atom 0)]
-    (while (.find m @cursor)
+        shallow (mask-nested-blocks (subs masked body-start limit))
+        m (re-matcher method-pat shallow)
+        ops (atom [])]
+    (while (.find m)
       (let [nm (.group m 1)
             tok (.group m 2)
-            name-abs (+ body-start (.start m 1))
-            end-rel (.end m)
-            next-pos (if (= tok "{")
-                       (let [close-abs (matching-brace masked (+ body-start (dec end-rel)))]
-                         (min (count body) (max end-rel (- (inc close-abs) body-start))))
-                       end-rel)]
+            name-abs (+ body-start (.start m 1))]
         (when (and nm
                    (not= nm type-name)
                    (not (contains? skip-method-names nm))
                    (contains? #{"{" "=>"} tok))
           (let [ln (line-at masked name-abs)]
-            (swap! ops conj {:name nm :text nm :file rel-file :line ln})))
-        (reset! cursor next-pos)))
+            (swap! ops conj {:name nm :text nm :file rel-file :line ln})))))
     @ops))
 
 (defn- strip-balanced-generics [^String s]

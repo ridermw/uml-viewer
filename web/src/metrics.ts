@@ -6,7 +6,9 @@ export function percent(value: number | null): string {
 export function mutationScore(
   killed: number | null,
   survived: number | null,
+  incomplete?: boolean | null,
 ): number | null {
+  if (incomplete) return null;
   return killed === null || survived === null || killed + survived === 0
     ? null
     : killed / (killed + survived);

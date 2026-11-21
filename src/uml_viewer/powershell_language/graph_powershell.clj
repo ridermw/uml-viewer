@@ -151,10 +151,10 @@
       (not (str/includes? without-root "$")))))
 
 (defn- parse-import-module-target [^String tail]
-  ;; Walk arguments skipping switches (-Force, -Global, -DisableNameChecking, etc.)
+  ;; Walk arguments skipping switches (-Force, -Global, -AsCustomObject, -DisableNameChecking, etc.)
   ;; and picking the value after -Name or the first positional argument.
   (let [value-params #{"-minimumversion" "-maximumversion" "-requiredversion" "-prefix"
-                       "-scope" "-alias" "-cmdlet" "-function" "-variable" "-argumentlist" "-ascustomobject"}]
+                       "-scope" "-alias" "-cmdlet" "-function" "-variable" "-argumentlist"}]
     (loop [rem tail]
       (let [[tok rest-s] (parse-arg-token rem)]
         (cond
@@ -183,20 +183,20 @@
                          (re-find #"(?i)\.(?:ps1|psm1)$" path)
                          (static-ps-target? path))
                 (swap! refs conj {:kind :dot :target path})))))
-        ;; Import-Module: require a true command boundary (never Test-Import-Module)
-        (let [m (re-matcher #"(?i)(?:^|[\s;|&(])(Import-Module)(?=[ \t])" mline)]
+        ;; Import-Module: require a true command position (line start or statement/pipeline/group delimiter)
+        (let [m (re-matcher #"(?i)(?:^|[;|&({])\s*(Import-Module)(?=[ \t])" mline)]
           (while (.find m)
             (let [tail (subs line (min (.end m 1) (count line)))
                   target (parse-import-module-target tail)]
               (when (static-ps-target? target)
                 (swap! refs conj {:kind :module :target target})))))
-        ;; using module: command tokens must be unmasked
+        ;; using module: command tokens must be unmasked (always script-relative)
         (let [m (re-matcher #"(?i)^\s*(using\s+module)(?=[ \t])" mline)]
           (when (.find m)
             (let [tail (subs line (min (.end m 1) (count line)))
                   [target _] (parse-arg-token tail)]
               (when (static-ps-target? target)
-                (swap! refs conj {:kind :module :target target})))))
+                (swap! refs conj {:kind :using :target target})))))
         ;; #Requires -Modules: preserved verbatim in masked text
         (when-let [[_ mods] (re-find #"(?i)^\s*#Requires\s+-Modules\s+(.+)$" mline)]
           (doseq [mod (str/split mods #",")]
@@ -205,12 +205,18 @@
                 (swap! refs conj {:kind :requires :target cleaned})))))))
     @refs))
 
-(defn- resolve-dot [^File source-file target path->id]
-  (let [cleaned (-> target
-                    (str/replace #"(?i)\$PSScriptRoot[/\\]?" "")
+(defn- resolve-path [^File source-file ^File work-dir kind target path->id]
+  (let [script-root? (boolean (re-find #"(?i)^\$PSScriptRoot(?:[/\\]|$)" target))
+        cleaned (-> target
+                    (str/replace #"(?i)^\$PSScriptRoot[/\\]?" "")
                     (str/replace #"\\" "/"))]
     (when-not (str/includes? cleaned "$")
-      (let [cand (.getCanonicalFile (io/file (.getParentFile source-file) cleaned))]
+      (let [base-dir (if (or script-root? (= kind :using))
+                       (.getParentFile source-file)
+                       work-dir)
+            cand (.getCanonicalFile (if (.isAbsolute (io/file cleaned))
+                                      (io/file cleaned)
+                                      (io/file base-dir cleaned)))]
         (get path->id (.getPath cand))))))
 
 (defn- explicit-path? [target]
@@ -219,11 +225,11 @@
       (str/starts-with? target ".")
       (re-find #"(?i)\.(?:ps1|psm1|psd1)$" target)))
 
-(defn- resolve-module [^File source-file target path->id by-stem]
+(defn- resolve-module [^File source-file ^File work-dir kind target path->id by-stem]
   (let [cleaned (str/replace target #"\\" "/")]
     (if (explicit-path? cleaned)
       ;; Explicit paths must resolve to that path — never fall back to an unrelated stem match.
-      (resolve-dot source-file cleaned path->id)
+      (resolve-path source-file work-dir kind target path->id)
       (let [stem (str/lower-case cleaned)
             matches (get by-stem stem)]
         (when (= 1 (count matches))
@@ -262,8 +268,8 @@
         edges (->> (for [n nodes
                          r (:refs n)
                          :let [resolved (if (= :dot (:kind r))
-                                          (resolve-dot (:raw-file n) (:target r) path->id)
-                                          (resolve-module (:raw-file n) (:target r) path->id by-stem))
+                                          (resolve-path (:raw-file n) project-root :dot (:target r) path->id)
+                                          (resolve-module (:raw-file n) project-root (:kind r) (:target r) path->id by-stem))
                                to (or resolved
                                       (when (and (not= :dot (:kind r))
                                                  (not (explicit-path? (:target r))))

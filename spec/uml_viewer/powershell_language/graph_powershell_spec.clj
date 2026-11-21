@@ -67,18 +67,23 @@
     (let [dir (temp-root)]
       (spit-file dir "src/My Module.psm1" "function Get-M { return 1 }\n")
       (spit-file dir "src/Other.psm1" "function Get-O { return 2 }\n")
-      (spit-file dir "src/Runner.ps1"
-                 (str ". \"$PSScriptRoot/My Module.psm1\"\n"
+      (spit-file dir "src/Helper.ps1" "function Get-H { return 3 }\n")
+      (spit-file dir "scripts/Runner.ps1"
+                 (str ". \"$PSScriptRoot/../src/My Module.psm1\"\n"
+                      ". './src/Helper.ps1'\n"
                       "Import-Module -Force -Name Az.Accounts\n"
-                      "Import-Module \"$PSScriptRoot/Other.psm1\"\n"
+                      "Import-Module -AsCustomObject Other\n"
                       "Import-Module './Missing/Other.psm1'\n"
-                      "Test-Import-Module ShouldIgnore\n"))
+                      "Test-Import-Module ShouldIgnore\n"
+                      "Write-Output Import-Module ArgFake\n"))
       (let [g (graph/scan ps-graph/impl dir {:prefix "" :project-root dir})
             by-ns (into {} (map (juxt :ns identity) (:classes g)))
             edges (set (map (juxt :from :to :kind) (:edges g)))]
         (should-contain "Az.Accounts" by-ns)
         (should-not-contain "-Force" by-ns)
         (should-not-contain "ShouldIgnore" by-ns)
-        (should (contains? edges [:Runner (keyword "My Module") :dependency]))
-        (should (contains? edges [:Runner :Other :dependency]))
-        (should (contains? edges [:Runner :Az.Accounts :dependency]))))))
+        (should-not-contain "ArgFake" by-ns)
+        (should (contains? edges [:scripts.Runner (keyword "My Module") :dependency]))
+        (should (contains? edges [:scripts.Runner :Helper :dependency]))
+        (should (contains? edges [:scripts.Runner :Other :dependency]))
+        (should (contains? edges [:scripts.Runner :Az.Accounts :dependency]))))))

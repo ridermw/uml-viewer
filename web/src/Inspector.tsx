@@ -22,7 +22,7 @@ export function Inspector({
     member,
     tab === "source",
   );
-  const mutation = mutationScore(node.killed, node.survived);
+  const mutation = mutationScore(node.killed, node.survived, node.incomplete);
   const relationships = snapshot.scene.edges.filter(
     (e) => e.from === node.id || e.to === node.id,
   );
