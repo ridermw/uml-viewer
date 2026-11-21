@@ -75,8 +75,10 @@ export function Inspector({
             </div>
             <div className="metric-row">
               <span>Mutation score</span>
-              <strong>{percent(mutation)}</strong>
-              {mutation !== null && <progress max="1" value={mutation} />}
+              <strong>{node.incomplete ? "Incomplete" : percent(mutation)}</strong>
+              {!node.incomplete && mutation !== null && (
+                <progress max="1" value={mutation} />
+              )}
             </div>
             <div className="metric-row">
               <span>CRAP mean</span>

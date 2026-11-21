@@ -94,10 +94,14 @@
 (defn- dedupe-forms [forms]
   (let [seen (atom #{})]
     (filterv (fn [form]
-               (let [k [(:file form) (:id form) (:line form) (:hash form)]]
-                 (if (contains? @seen k)
-                   false
-                   (do (swap! seen conj k) true))))
+               ;; Only deduplicate forms that carry declaration provenance (:file or :line);
+               ;; legacy forms without provenance keep their snapshot origin and are not collapsed.
+               (if (or (:file form) (:line form))
+                 (let [k [(:snapshot-ns form) (:file form) (:id form) (:line form) (:ordinal form) (:hash form)]]
+                   (if (contains? @seen k)
+                     false
+                     (do (swap! seen conj k) true)))
+                 true))
              forms)))
 
 (defn- mutate-by-fn [snapshot]
@@ -206,7 +210,11 @@
 (defn- merge-mutate [snapshots]
   (let [snaps (vec (keep identity snapshots))]
     (when (seq snaps)
-      (cond-> {:forms (vec (mapcat #(or (:forms %) []) snaps))}
+      (cond-> {:forms (vec (mapcat (fn [s]
+                                     (let [sns (:namespace s)]
+                                       (map #(cond-> % sns (assoc :snapshot-ns sns))
+                                            (or (:forms s) []))))
+                                   snaps))}
         (some :incomplete snaps) (assoc :incomplete true)))))
 
 (defn- pct->ratio [cov]

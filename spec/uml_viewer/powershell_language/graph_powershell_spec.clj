@@ -46,4 +46,19 @@
               res (source/member-source ps-source/impl
                                         {:lang :powershell :ns "Core.Math" :file math-file :name "Get-Total"})]
           (should-not-be-nil res)
-          (should= 2 (:line res)))))))
+          (should= 2 (:line res))))))
+
+  (it "ignores Import-Module inside strings/comments and records function line from captured name"
+    (let [dir (temp-root)]
+      (spit-file dir "src/Clean.ps1"
+                 (str "# Header comment\n\n"
+                      "function Get-Clean {\n"
+                      "  $msg = 'Import-Module FakeFromString'\n"
+                      "  Write-Host ok # Import-Module FakeFromComment\n"
+                      "}\n"))
+      (let [g (graph/scan ps-graph/impl dir {:prefix "" :project-root dir})
+            by-ns (into {} (map (juxt :ns identity) (:classes g)))
+            clean (get by-ns "Clean")]
+        (should-not-contain "FakeFromString" by-ns)
+        (should-not-contain "FakeFromComment" by-ns)
+        (should= 3 (:line (first (:ops clean))))))))

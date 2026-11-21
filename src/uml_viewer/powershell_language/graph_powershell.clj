@@ -124,30 +124,40 @@
         ops (atom [])]
     (while (.find m)
       (let [nm (strip-scope (.group m 1))
-            ln (line-at masked (.start m))]
+            ln (line-at masked (.start m 1))]
         (swap! ops conj {:name nm :text nm :file rel-file :line ln})))
     @ops))
 
 (defn- extract-static-refs [^String raw ^String masked]
-  ;; Inspect unmasked lines that are not comments for dot-source, Import-Module, using module, #Requires
+  ;; Match command tokens strictly in the masked text (never inside comments or strings),
+  ;; then read the path/module argument from the corresponding raw line offset.
   (let [refs (atom [])]
     (doseq [[line mline] (map vector (str/split-lines raw) (str/split-lines masked))]
       (when-not (str/blank? mline)
-        ;; Dot-source: . "$PSScriptRoot/foo.ps1" or . ./foo.ps1
-        (when-let [[_ path] (re-find #"(?i)^\s*\.\s+[\"']?([^\"'\s;]+(?:\.ps1|\.psm1))[\"']?" line)]
-          (swap! refs conj {:kind :dot :target path}))
-        ;; Import-Module path or module name
-        (when-let [[_ target] (re-find #"(?i)\bImport-Module\s+(?:-Name\s+)?[\"']?([^\"'\s;,\)]+)[\"']?" line)]
-          (when-not (str/includes? target "$")
-            (swap! refs conj {:kind :module :target target})))
-        ;; using module <name-or-path>
-        (when-let [[_ target] (re-find #"(?i)^\s*using\s+module\s+[\"']?([^\"'\s;]+)[\"']?" line)]
-          (when-not (str/includes? target "$")
-            (swap! refs conj {:kind :module :target target})))
-        ;; #Requires -Modules Foo, Bar
-        (when-let [[_ mods] (re-find #"(?i)^\s*#Requires\s+-Modules\s+(.+)$" line)]
-          (doseq [m (str/split mods #",")]
-            (let [cleaned (str/trim (str/replace m #"[\"']" ""))]
+        ;; Dot-source: `.` must appear as an unmasked command token at line start
+        (let [m (re-matcher #"(?i)^\s*(\.)(?=[ \t])" mline)]
+          (when (.find m)
+            (let [tail (str/triml (subs line (min (.end m 1) (count line))))]
+              (when-let [[_ path] (re-find #"(?i)^[\"']?([^\"'\s;]+(?:\.ps1|\.psm1))[\"']?" tail)]
+                (swap! refs conj {:kind :dot :target path})))))
+        ;; Import-Module: command token must be unmasked
+        (let [m (re-matcher #"(?i)\b(Import-Module(?:\s+-Name)?)(?=[ \t])" mline)]
+          (while (.find m)
+            (let [tail (str/triml (subs line (min (.end m 1) (count line))))]
+              (when-let [[_ target] (re-find #"^[\"']?([^\"'\s;,\)]+)[\"']?" tail)]
+                (when-not (str/includes? target "$")
+                  (swap! refs conj {:kind :module :target target}))))))
+        ;; using module: command tokens must be unmasked
+        (let [m (re-matcher #"(?i)^\s*(using\s+module)(?=[ \t])" mline)]
+          (when (.find m)
+            (let [tail (str/triml (subs line (min (.end m 1) (count line))))]
+              (when-let [[_ target] (re-find #"^[\"']?([^\"'\s;]+)[\"']?" tail)]
+                (when-not (str/includes? target "$")
+                  (swap! refs conj {:kind :module :target target}))))))
+        ;; #Requires -Modules: preserved verbatim in masked text
+        (when-let [[_ mods] (re-find #"(?i)^\s*#Requires\s+-Modules\s+(.+)$" mline)]
+          (doseq [mod (str/split mods #",")]
+            (let [cleaned (str/trim (str/replace mod #"[\"']" ""))]
               (when (and (seq cleaned) (not (str/includes? cleaned "$")) (not (str/starts-with? cleaned "@")))
                 (swap! refs conj {:kind :requires :target cleaned})))))))
     @refs))
@@ -170,7 +180,9 @@
 
 (defn scan-powershell [root opts]
   (let [root-file (.getCanonicalFile (io/file root))
-        project-root (.getCanonicalFile (io/file (or (:project-root opts) root-file)))
+        project-root (.getCanonicalFile (io/file (or (:project-root opts)
+                                                     (System/getProperty "user.dir")
+                                                     ".")))
         prefix (or (:prefix opts) "")
         files (ps-files root-file)
         nodes (mapv (fn [^File f]

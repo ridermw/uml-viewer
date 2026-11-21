@@ -56,14 +56,20 @@
     (contains? x :killed) (assoc :killed (as-count (:killed x)))
     (contains? x :survived) (assoc :survived (as-count (:survived x)))
     (contains? x :uncovered) (assoc :uncovered (as-count (:uncovered x)))
-    (contains? x :sites) (assoc :sites (as-count (:sites x)))))
+    (contains? x :sites) (assoc :sites (as-count (:sites x)))
+    (contains? x :invalid) (assoc :invalid (as-count (:invalid x)))
+    (contains? x :errors) (assoc :errors (as-count (:errors x)))
+    (true? (:incomplete x)) (assoc :incomplete true)))
 
 (defn- with-member-metrics [m x]
   (cond-> m
     (contains? x :cc) (assoc :cc (as-cc (:cc x)))
     (contains? x :crap) (assoc :crap (as-crap (:crap x)))
     (true? (:private x)) (assoc :private true)
-    (contains? x :name) (assoc :name (:name x))))
+    (contains? x :name) (assoc :name (:name x))
+    (:file x) (assoc :file (str (:file x)))
+    (some? (:line x)) (assoc :line (long (:line x)))
+    (seq (:locations x)) (assoc :locations (vec (:locations x)))))
 
 (defn- as-member [x]
   (cond
@@ -85,20 +91,23 @@
     (when-not name
       (throw (ex-info "class needs :name or :id" {:class c})))
     (with-class-source
-      {:id (as-id (or (:id c) name))
-       :name name
-       :shape (when (or (:foreign c) (= :oval (keyword (:shape c)))) :oval)
-       :stereotype (:stereotype c)
-       :crap (as-crap (:crap c))
-       :coverage (as-coverage (:coverage c))
-       :cc (as-cc (:cc c))
-       :killed (as-count (:killed c))
-       :survived (as-count (:survived c))
-       :uncovered (as-count (:uncovered c))
-       :sites (as-count (:sites c))
-       :hide-members (boolean (:hide-members c))
-       :fields (mapv as-member (:fields c))
-       :ops (mapv as-member (:ops c))}
+      (cond-> {:id (as-id (or (:id c) name))
+               :name name
+               :shape (when (or (:foreign c) (= :oval (keyword (:shape c)))) :oval)
+               :stereotype (:stereotype c)
+               :crap (as-crap (:crap c))
+               :coverage (as-coverage (:coverage c))
+               :cc (as-cc (:cc c))
+               :killed (as-count (:killed c))
+               :survived (as-count (:survived c))
+               :uncovered (as-count (:uncovered c))
+               :sites (as-count (:sites c))
+               :hide-members (boolean (:hide-members c))
+               :fields (mapv as-member (:fields c))
+               :ops (mapv as-member (:ops c))}
+        (contains? c :invalid) (assoc :invalid (as-count (:invalid c)))
+        (contains? c :errors) (assoc :errors (as-count (:errors c)))
+        (true? (:incomplete c)) (assoc :incomplete true))
       c)))
 
 (defn- as-package [p]

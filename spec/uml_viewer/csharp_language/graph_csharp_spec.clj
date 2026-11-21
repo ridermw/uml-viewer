@@ -92,4 +92,46 @@
       (should (:incomplete add-op))
       (should (:incomplete board))
       ;; Nested canonical namespace Demo.Board.Inner claimed by Demo.Board
-      (should (some #(= "Step" (:name %)) (:ops board))))))
+      (should (some #(= "Step" (:name %)) (:ops board)))))
+
+  (it "handles balanced generic bases, single-line block namespaces, IR normalization, and hierarchy incomplete rollups"
+    (let [dir (temp-root)]
+      (spit-file dir "src/Pair.cs"
+                 (str "namespace Demo { public interface IPair<K, V> { } }\n"
+                      "namespace Demo { public class Map : IPair<string, List<int>> { public void Go() {} } }\n"))
+      (let [g (graph/scan cs-graph/impl dir {:prefix "Demo" :project-root dir})
+            by-id (into {} (map (juxt :id identity) (:classes g)))
+            edges (set (map (juxt :from :to :kind) (:edges g)))]
+        (should-contain :IPair by-id)
+        (should-contain :Map by-id)
+        (should= "Demo.Map" (:ns (:Map by-id)))
+        (should (contains? edges [:Map :IPair :implements]))))
+    ;; Packaged diagram normalization preserves operation provenance and incomplete flags
+    (let [doc {:title "T"
+               :packages [{:id :demo :label "Demo"
+                           :classes [{:id :Board :name "Board" :ns "Demo.Board" :file "src/Board.cs"
+                                      :ops [{:name "Reset" :text "Reset" :file "src/Board.Part.cs" :line 3}]}]}]}
+          metrics {:crap {}
+                   :mutate {"Demo.Board" {:namespace "Demo.Board" :incomplete true
+                                          :forms [{:id "defn/Reset" :file "src/Board.Part.cs" :line 3 :hash "h"
+                                                   :killed 1 :survived 0 :uncovered 0 :sites 1 :errors 1 :incomplete true}]}}}
+          painted (overlay/apply-metrics doc metrics)
+          board (first (:classes (first (:packages painted))))
+          reset-op (first (:ops board))]
+      (should (:incomplete board))
+      (should= 1 (:errors board))
+      (should= "src/Board.Part.cs" (:file reset-op))
+      (should= 3 (:line reset-op))
+      (should (:incomplete reset-op)))
+    ;; Legacy forms without :file/:line from distinct snapshots are not collapsed
+    (let [doc {:hierarchical true
+               :prefix "Demo"
+               :classes [{:id :Board :name "Board" :ns "Demo.Board" :lang :csharp}]}
+          metrics {:crap {}
+                   :mutate {"Demo.Board" {:namespace "Demo.Board"
+                                          :forms [{:id "defn/Run" :hash "same" :killed 2 :survived 0 :uncovered 0 :sites 2}]}
+                            "Demo.Board.Inner" {:namespace "Demo.Board.Inner"
+                                                :forms [{:id "defn/Run" :hash "same" :killed 3 :survived 0 :uncovered 0 :sites 3}]}}}
+          painted (overlay/apply-metrics doc metrics)
+          board (first (:classes painted))]
+      (should= 5 (:killed board)))))

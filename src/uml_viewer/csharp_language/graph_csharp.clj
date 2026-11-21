@@ -203,12 +203,23 @@
             (swap! ops conj {:name nm :text nm :file rel-file :line ln})))))
     @ops))
 
+(defn- strip-balanced-generics [^String s]
+  (let [sb (StringBuilder. (count s))]
+    (loop [i 0 depth 0]
+      (if (>= i (count s))
+        (.toString sb)
+        (let [ch (.charAt s i)]
+          (cond
+            (= ch \<) (recur (inc i) (inc depth))
+            (and (= ch \>) (pos? depth)) (recur (inc i) (dec depth))
+            (zero? depth) (do (.append sb ch) (recur (inc i) 0))
+            :else (recur (inc i) depth)))))))
+
 (defn- parse-bases [base-str]
   (when (and base-str (not (str/blank? base-str)))
-    (->> (str/split base-str #",")
+    (->> (str/split (strip-balanced-generics base-str) #",")
          (map (fn [s]
                 (-> s
-                    (str/replace #"<[^>]*>" "")
                     (str/replace #"\([^)]*\)" "")
                     str/trim)))
          (remove str/blank?)
@@ -240,7 +251,7 @@
             tname (.group m 2)
             bases (parse-bases (.group m 3))
             delim (.group m 4)
-            start (.start m)
+            start (.start m 2)
             open-idx (dec (.end m))
             end-idx (if (= delim "{") (matching-brace masked open-idx) (.end m))
             block-nss (enclosing-block-namespaces masked start)
@@ -330,7 +341,9 @@
 (defn scan-csharp [root opts]
   (let [root-file (.getCanonicalFile (io/file root))
         prefix (or (:prefix opts) "")
-        project-root (io/file (or (:project-root opts) root-file))
+        project-root (.getCanonicalFile (io/file (or (:project-root opts)
+                                                     (System/getProperty "user.dir")
+                                                     ".")))
         files (cs-files root-file)
         entries (mapcat (fn [^File f]
                           (let [rel (let [p (str/replace (.getCanonicalPath f) #"\\" "/")
